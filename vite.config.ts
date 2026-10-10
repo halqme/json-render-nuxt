@@ -1,7 +1,7 @@
 import { defineConfig } from "vite-plus";
 
 export default defineConfig({
-  fmt: {},
+  fmt: { ignorePatterns: [".agents/**"] },
   lint: {
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
     rules: { "vite-plus/prefer-vite-plus-imports": "error" },
@@ -14,6 +14,8 @@ export default defineConfig({
       generate: "nuxt generate",
       preview: "nuxt preview",
       postinstall: "nuxt prepare",
+      test: { command: "playwright test", cache: false, dependsOn: ["build"] },
+      typecheck: "nuxt typecheck",
     },
   },
 });

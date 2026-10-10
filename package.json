@@ -4,16 +4,22 @@
   "type": "module",
   "scripts": {},
   "dependencies": {
+    "@iconify-json/lucide": "^1.2.142",
     "@json-render/core": "^0.21.0",
     "@json-render/vue": "^0.21.0",
     "@nuxt/ui": "^4.11.3",
+    "h3": "^1.15.0",
     "nuxt": "^4.6.0",
     "vue": "^3.5.43",
-    "vue-router": "^5.3.1"
+    "vue-router": "^5.3.1",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "typescript": "~5.9.3",
     "vite": "npm:@voidzero-dev/vite-plus-core@1.1.0",
-    "vite-plus": "1.1.0"
+    "vite-plus": "1.1.0",
+    "vue-tsc": "^3.3.13"
   },
   "overrides": {
     "vite": "npm:@voidzero-dev/vite-plus-core@1.1.0"
