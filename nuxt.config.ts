@@ -35,7 +35,7 @@ export default defineNuxtConfig({
       },
     },
   },
-  colorMode: { preference: "dark", fallback: "dark" },
+  colorMode: { preference: "dark", fallback: "dark", disableTransition: true },
   icon: { clientBundle: { scan: true, includeCustomCollections: true }, provider: "server" },
-  app: { head: { title: "Orbit — Issue tracker", htmlAttrs: { lang: "en", class: "dark" } } },
+  app: { head: { title: "Orbit — Issue tracker", htmlAttrs: { lang: "en" } } },
 });

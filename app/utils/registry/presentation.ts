@@ -27,7 +27,7 @@ export function avatar(id: string) {
                 text: person.initials,
                 alt: person.name,
                 size: "2xs",
-                style: { background: `${person.color}28`, color: "#eee" },
+                style: { background: `${person.color}28` },
               }),
             ]),
         },

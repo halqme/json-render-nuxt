@@ -139,8 +139,8 @@ function shortcut(event: KeyboardEvent) {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  border-inline-start: 1px solid #343439;
-  background: #141416;
+  border-inline-start: 1px solid var(--orbit-border);
+  background: var(--orbit-canvas);
   padding: 18px;
   gap: 12px;
 }
@@ -158,21 +158,21 @@ function shortcut(event: KeyboardEvent) {
   font-size: 14px;
 }
 .inspector-header p {
-  color: #aaaab7;
+  color: var(--orbit-subtle);
   font-family: monospace;
   font-size: 11px;
   margin-block-start: 6px;
 }
 .inspector-description p {
   font-size: 12px;
-  color: #aaaab7;
+  color: var(--orbit-subtle);
   line-height: 1.7;
   margin-block-start: 8px;
 }
 .editor-label {
   font-size: 11px;
   font-weight: 500;
-  color: #c5c5ce;
+  color: var(--orbit-text-secondary);
 }
 .spec-editor {
   flex: 1;
@@ -180,10 +180,10 @@ function shortcut(event: KeyboardEvent) {
   min-height: 140px;
   resize: none;
   padding: 12px;
-  border: 1px solid #575762;
+  border: 1px solid var(--orbit-border-strong);
   border-radius: 6px;
-  background: #1b1b1f;
-  color: #ddd5f0;
+  background: var(--orbit-surface-muted);
+  color: var(--orbit-code);
   font:
     12px/1.7 ui-monospace,
     SFMono-Regular,
@@ -193,12 +193,12 @@ function shortcut(event: KeyboardEvent) {
   overscroll-behavior: contain;
 }
 .spec-editor:focus-visible {
-  outline: 2px solid #a78bfa;
+  outline: 2px solid var(--orbit-focus);
   outline-offset: 2px;
 }
 .editor-hint {
   font-size: 10px;
-  color: #aaaab7;
+  color: var(--orbit-subtle);
   line-height: 1.6;
 }
 .inspector-error {
@@ -208,11 +208,11 @@ function shortcut(event: KeyboardEvent) {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: 11px;
-  color: #f3aaaa;
+  color: var(--orbit-danger);
 }
 .inspector-feedback {
   font-size: 11px;
-  color: #bcb1df;
+  color: var(--orbit-accent);
   line-height: 1.6;
 }
 .inspector-actions {
@@ -225,7 +225,7 @@ function shortcut(event: KeyboardEvent) {
   .spec-inspector {
     position: static;
     border-inline-start: 0;
-    border-block-end: 1px solid #343439;
+    border-block-end: 1px solid var(--orbit-border);
     height: 65dvh;
     min-height: 480px;
   }

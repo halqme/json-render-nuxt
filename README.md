@@ -1,6 +1,6 @@
 # Orbit — Server-Driven Issue Tracker
 
-Linearに着想を得た、ダークテーマの業務アプリケーションモックです。Nuxt 4 / Vue 3 / Nuxt UI 4 / json-render 0.21.xを使用しています。CSR専用で、AI API・LLM SDK・認証・データベースは使用しません。
+Linearに着想を得た、ライト・ダーク両テーマ対応の業務アプリケーションモックです。Nuxt 4 / Vue 3 / Nuxt UI 4 / json-render 0.21.xを使用しています。CSR専用で、AI API・LLM SDK・認証・データベースは使用しません。
 
 ## 起動とチェック
 
@@ -84,6 +84,12 @@ json-render 0.21.0のVueスキーマの検証結果には`on`が含まれない�
 - URLの`view`・`issue`・`project`に画面状態を反映し、再読み込みとブラウザの戻る操作に対応しています。
 
 Issueと履歴はブラウザのlocalStorageに保存します。Orbitは`linear-mock-tracker:v1`、Sandboxは`linear-mock-tracker:sandbox:v1`、選択ワークスペースは`orbit:active-workspace`です。保存値を検証し、不正なデータはサンプルにフォールバックします。保存失敗は画面に通知します。複数端末やタブ間の同期は行いません。
+
+## テーマ
+
+トップバーの太陽・月アイコンでライト／ダークを切り替えます。初期設定はダークで、選択はNuxt Color Modeがブラウザに保存し、再読み込み後も維持します。切り替えにリロードは不要で、フィルターや適用済みのUI Specは保持されます。
+
+配色は`app/assets/css/theme.css`の意味別トークンに集約しています。シェル、Registry、検索・新規作成ダイアログ、Inspect UI、およびNuxt UIの背景・文字・枠線が同じトークンを参照します。配色を調整する際はライト用の`:root`とダーク用の`:root.dark`を更新してください。テーマはクライアント設定であり、サーバーのSpecは変更しません。
 
 ## Inspect UI
 

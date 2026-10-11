@@ -81,15 +81,14 @@ function submitShortcut(event: KeyboardEvent) {
     v-model:open="open"
     title="New issue"
     description="Capture a task for your team. Add details and choose its properties."
-    class="dark"
     :ui="{
       content:
-        'bg-[#171719] ring-1 ring-white/10 sm:max-w-xl max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain',
+        'bg-default ring-1 ring-default sm:max-w-xl max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain',
       body: 'p-0 overscroll-contain',
-      header: 'border-white/5',
-      description: 'text-[#9c9ca8]',
+      header: 'border-default',
+      description: 'text-muted',
       close:
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a78bfa]',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--orbit-focus)',
     }"
   >
     <template #body>
@@ -167,7 +166,6 @@ function submitShortcut(event: KeyboardEvent) {
                   size="3xs"
                   :style="{
                     backgroundColor: selectedPerson.color + '30',
-                    color: selectedPerson.color,
                   }" /><UIcon v-else name="i-lucide-user-round"
               /></template>
             </USelect>
@@ -204,8 +202,8 @@ function submitShortcut(event: KeyboardEvent) {
 <style scoped>
 .issue-form {
   min-width: 0;
-  background: #171719;
-  color: #e5e5eb;
+  background: var(--orbit-surface);
+  color: var(--orbit-text);
   overscroll-behavior: contain;
 }
 .issue-context {
@@ -214,15 +212,15 @@ function submitShortcut(event: KeyboardEvent) {
   gap: 9px;
   padding: 20px 24px 0;
   font-size: 11px;
-  color: #9c9ca8;
+  color: var(--orbit-subtle);
 }
 .team-badge {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  color: #c2c2ce;
-  background: #ffffff06;
-  border: 1px solid #ffffff0c;
+  color: var(--orbit-text-secondary);
+  background: var(--orbit-surface-muted);
+  border: 1px solid var(--orbit-border);
   padding: 3px 6px;
   border-radius: 5px;
   font-size: 10px;
@@ -239,19 +237,19 @@ function submitShortcut(event: KeyboardEvent) {
 .title-input :deep(input),
 .description-input :deep(textarea) {
   width: 100%;
-  color: #eeeef4;
+  color: var(--orbit-text);
 }
 .title-input :deep(input::placeholder),
 .description-input :deep(textarea::placeholder) {
-  color: #9c9ca8;
+  color: var(--orbit-subtle);
 }
 .issue-form :deep(:focus-visible) {
-  outline: 2px solid #a78bfa;
+  outline: 2px solid var(--orbit-focus);
   outline-offset: 2px;
 }
 .title-input :deep(input:focus-visible),
 .description-input :deep(textarea:focus-visible) {
-  outline: 2px solid #a78bfa;
+  outline: 2px solid var(--orbit-focus);
   outline-offset: 4px;
   border-radius: 4px;
 }
@@ -270,14 +268,14 @@ function submitShortcut(event: KeyboardEvent) {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #9c9ca8;
+  color: var(--orbit-subtle);
   font-size: 11px;
 }
 .property-select {
   width: 100%;
   min-width: 0;
-  color: #c9c9d4;
-  background: #1e1e22;
+  color: var(--orbit-text-secondary);
+  background: var(--orbit-surface-muted);
   font-size: 12px;
 }
 .property-select :deep([data-slot="value"]) {
@@ -289,7 +287,7 @@ function submitShortcut(event: KeyboardEvent) {
 .form-error {
   padding: 0 24px 18px;
   font-size: 12px;
-  color: #f0a5a5;
+  color: var(--orbit-danger);
 }
 .form-footer {
   display: flex;
@@ -297,11 +295,11 @@ function submitShortcut(event: KeyboardEvent) {
   justify-content: space-between;
   gap: 12px;
   padding: 15px 24px;
-  border-top: 1px solid #ffffff0d;
+  border-top: 1px solid var(--orbit-border);
 }
 .shortcut-hint {
   font-size: 10px;
-  color: #9c9ca8;
+  color: var(--orbit-subtle);
 }
 .form-actions {
   display: flex;
@@ -309,14 +307,14 @@ function submitShortcut(event: KeyboardEvent) {
   gap: 8px;
 }
 .submit-button {
-  background: #7065d9;
-  color: #fff;
-  border: 1px solid #ffffff10;
+  background: var(--orbit-brand);
+  color: var(--orbit-on-brand);
+  border: 1px solid var(--orbit-border);
   font-size: 12px;
 }
 @media (hover: hover) {
   .submit-button:hover {
-    background: #8075e6;
+    background: var(--orbit-brand-hover);
   }
 }
 .sr-only {

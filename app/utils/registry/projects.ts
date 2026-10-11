@@ -11,7 +11,13 @@ export const projectsComponents = {
       h("div", { class: "jr-project-top" }, [
         h(
           "span",
-          { class: "jr-project-icon", style: { color: p.color, background: `${p.color}18` } },
+          {
+            class: "jr-project-icon",
+            style: {
+              color: `color-mix(in srgb, ${p.color} 55%, var(--orbit-text))`,
+              background: `${p.color}18`,
+            },
+          },
           [icon(p.icon)],
         ),
         h(UBadge, { label: p.status, variant: "subtle", color: "neutral", size: "sm" }),

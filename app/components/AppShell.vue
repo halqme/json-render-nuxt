@@ -138,7 +138,7 @@ function newIssue() {
 </script>
 
 <template>
-  <div class="orbit-shell dark">
+  <div class="orbit-shell">
     <a class="skip-link" href="#orbit-main">Skip to content</a>
     <aside class="sidebar" aria-label="Workspace sidebar">
       <div class="workspace-row">
@@ -277,6 +277,7 @@ function newIssue() {
           >
         </nav>
         <div class="topbar-actions">
+          <ThemeToggle />
           <UButton
             icon="i-lucide-code-xml"
             variant="ghost"
@@ -312,15 +313,14 @@ function newIssue() {
       v-model:open="searchOpen"
       title="Search workspace"
       description="Find any issue in Orbit or jump to a page."
-      class="dark"
       :ui="{
         content:
-          'bg-[#171719] ring-1 ring-white/10 max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain',
+          'bg-default ring-1 ring-default max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain',
         body: 'p-0 overscroll-contain',
-        header: 'border-white/5',
-        description: 'text-[#9c9ca8]',
+        header: 'border-default',
+        description: 'text-muted',
         close:
-          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a78bfa]',
+          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--orbit-focus)',
       }"
     >
       <template #body>
@@ -375,23 +375,22 @@ function newIssue() {
 
 <style scoped>
 .orbit-shell {
-  --shell-border: #ffffff0d;
   display: flex;
   min-height: 100dvh;
-  background: #171719;
-  color: #e5e5e9;
+  background: var(--orbit-surface);
+  color: var(--orbit-text);
   font-size: 13px;
 }
 .orbit-shell :deep(:focus-visible),
 .command-search :deep(:focus-visible) {
-  outline: 2px solid #a78bfa;
+  outline: 2px solid var(--orbit-focus);
   outline-offset: 2px;
 }
 .sidebar {
   width: 228px;
   flex: 0 0 228px;
-  background: #111113;
-  border-right: 1px solid var(--shell-border);
+  background: var(--orbit-canvas);
+  border-right: 1px solid var(--orbit-border);
   padding: 15px 12px 10px;
   display: flex;
   flex-direction: column;
@@ -413,7 +412,7 @@ function newIssue() {
   font-weight: 650;
   gap: 9px;
   padding: 4px;
-  color: #efeff2;
+  color: var(--orbit-text);
 }
 .workspace-mark {
   display: grid;
@@ -421,17 +420,17 @@ function newIssue() {
   width: 26px;
   height: 26px;
   border-radius: 7px;
-  background: #6962d5;
-  color: white;
+  background: var(--orbit-brand);
+  color: var(--orbit-on-brand);
   font-size: 19px;
 }
 .workspace-chevron {
-  color: #9c9ca8;
+  color: var(--orbit-subtle);
   font-size: 13px;
 }
 .search-trigger {
   width: 100%;
-  color: #9c9ca8;
+  color: var(--orbit-subtle);
   font-size: 13px;
   margin-bottom: 12px;
 }
@@ -439,8 +438,8 @@ kbd {
   margin-left: auto;
   font: inherit;
   font-size: 10px;
-  color: #9c9ca8;
-  border: 1px solid #ffffff12;
+  color: var(--orbit-subtle);
+  border: 1px solid var(--orbit-border);
   border-radius: 4px;
   padding: 1px 4px;
 }
@@ -451,7 +450,7 @@ kbd {
 .nav-item {
   width: 100%;
   justify-content: flex-start;
-  color: #a5a5af;
+  color: var(--orbit-subtle);
   font-size: 13px;
   min-height: 33px;
   gap: 10px;
@@ -460,20 +459,20 @@ kbd {
 @media (hover: hover) {
   .nav-item:hover,
   .search-trigger:hover {
-    background: #ffffff06;
-    color: #eeeef2;
+    background: var(--orbit-hover);
+    color: var(--orbit-text);
   }
 }
 .nav-item.selected {
-  background: #ffffff09;
-  color: #f0f0f4;
+  background: var(--orbit-selected);
+  color: var(--orbit-text);
 }
 .teams {
   margin-top: 30px;
 }
 .section-label {
   font-size: 11px;
-  color: #9c9ca8;
+  color: var(--orbit-subtle);
   padding: 0 9px;
   margin-bottom: 11px;
   font-weight: 500;
@@ -482,12 +481,12 @@ kbd {
   margin-bottom: 17px;
 }
 .team-name {
-  color: #c5c5ce;
+  color: var(--orbit-text-secondary);
   font-weight: 500;
 }
 .team-chevron {
   margin-left: auto;
-  color: #9c9ca8;
+  color: var(--orbit-subtle);
   font-size: 12px;
 }
 .team-child {
@@ -509,42 +508,42 @@ kbd {
   column-gap: 8px;
   row-gap: 4px;
   padding: 12px 9px 18px;
-  color: #9c9ca8;
+  color: var(--orbit-subtle);
   font-size: 11px;
 }
 .online-dot {
   width: 5px;
   height: 5px;
   margin-top: 5px;
-  background: #827abf;
+  background: var(--orbit-accent);
   border-radius: 50%;
 }
 .info-caption {
   grid-column: 2;
-  color: #9c9ca8;
+  color: var(--orbit-subtle);
   font-size: 10px;
 }
 .user-trigger {
   width: 100%;
-  border-top: 1px solid var(--shell-border);
+  border-top: 1px solid var(--orbit-border);
   border-radius: 0;
   padding: 12px 4px 3px;
-  color: #9c9ca8;
+  color: var(--orbit-subtle);
   gap: 9px;
 }
 .user-avatar {
-  background: #393049;
-  color: #d9c7f0;
+  background: var(--orbit-accent-surface);
+  color: var(--orbit-accent);
 }
 .user-copy {
   text-align: left;
   flex: 1;
-  color: #c5c5ce;
+  color: var(--orbit-text-secondary);
   font-size: 12px;
 }
 .user-copy span {
   display: block;
-  color: #9c9ca8;
+  color: var(--orbit-subtle);
   font-size: 10px;
   margin-top: 2px;
 }
@@ -554,7 +553,7 @@ kbd {
 }
 .topbar {
   height: 57px;
-  border-bottom: 1px solid var(--shell-border);
+  border-bottom: 1px solid var(--orbit-border);
   display: flex;
   align-items: center;
   padding: 0 25px;
@@ -568,7 +567,7 @@ kbd {
   font-size: 12px;
 }
 .breadcrumb-workspace {
-  color: #9c9ca8;
+  color: var(--orbit-subtle);
 }
 .breadcrumb-heading {
   margin: 0;
@@ -577,10 +576,10 @@ kbd {
   white-space: nowrap;
 }
 .divider {
-  color: #9c9ca8;
+  color: var(--orbit-subtle);
 }
 .project-crumb {
-  color: #a3a3ae;
+  color: var(--orbit-subtle);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -593,9 +592,9 @@ kbd {
   flex-shrink: 0;
 }
 .create-button {
-  background: #ffffff08;
-  border: 1px solid #ffffff0d;
-  color: #d4d4dd;
+  background: var(--orbit-surface-muted);
+  border: 1px solid var(--orbit-border);
+  color: var(--orbit-text-secondary);
   font-size: 12px;
 }
 .main-content {
@@ -610,16 +609,16 @@ kbd {
   left: 12px;
   top: -60px;
   z-index: 100;
-  background: #6962d5;
+  background: var(--orbit-brand);
   padding: 10px 16px;
   border-radius: 6px;
-  color: white;
+  color: var(--orbit-on-brand);
 }
 .skip-link:focus {
   top: 12px;
 }
 .command-search {
-  background: #171719;
+  background: var(--orbit-surface);
 }
 .command-input {
   display: flex;
@@ -627,7 +626,7 @@ kbd {
 }
 .command-input :deep(input) {
   width: 100%;
-  background: #111113;
+  background: var(--orbit-canvas);
 }
 .command-results {
   max-height: min(390px, 50dvh);
@@ -641,15 +640,15 @@ kbd {
   align-items: center;
   gap: 12px;
   padding: 10px;
-  color: #9c9ca8;
+  color: var(--orbit-subtle);
   text-align: left;
   border-radius: 6px;
   cursor: pointer;
 }
 .command-result.active,
 .command-result:focus-visible {
-  background: #ffffff08;
-  color: #f0f0f5;
+  background: var(--orbit-selected);
+  color: var(--orbit-text);
 }
 .result-copy {
   flex: 1;
@@ -659,22 +658,22 @@ kbd {
 .result-copy small {
   display: block;
   margin-top: 3px;
-  color: #9c9ca8;
+  color: var(--orbit-subtle);
   font-size: 11px;
 }
 .command-footer {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  border-top: 1px solid #ffffff0d;
+  border-top: 1px solid var(--orbit-border);
   padding: 12px 16px;
-  color: #9c9ca8;
+  color: var(--orbit-subtle);
   font-size: 10px;
 }
 .empty-search {
   padding: 28px 16px;
   text-align: center;
-  color: #9c9ca8;
+  color: var(--orbit-subtle);
   font-size: 13px;
 }
 @media (max-width: 767px) {
