@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { Issue } from "../../shared/types";
 
+defineProps<{ inspectOpen?: boolean }>();
+const emit = defineEmits<{ inspect: [] }>();
 const tracker = useTracker();
 const workspace = computed(() => tracker.state.value.workspaceName);
 const searchOpen = ref(false);
@@ -275,6 +277,16 @@ function newIssue() {
           >
         </nav>
         <div class="topbar-actions">
+          <UButton
+            icon="i-lucide-code-xml"
+            variant="ghost"
+            color="neutral"
+            aria-label="Inspect UI"
+            title="Inspect UI"
+            :aria-expanded="!!inspectOpen"
+            aria-controls="ui-spec-inspector"
+            @click="emit('inspect')"
+          />
           <UButton
             icon="i-lucide-search"
             variant="ghost"

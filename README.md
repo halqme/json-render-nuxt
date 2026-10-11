@@ -77,6 +77,12 @@ json-render 0.21.0のVueスキーマの検証結果には`on`が含まれない�
 
 Issueと履歴はブラウザのlocalStorageに保存します。Orbitは`linear-mock-tracker:v1`、Sandboxは`linear-mock-tracker:sandbox:v1`、選択ワークスペースは`orbit:active-workspace`です。保存値を検証し、不正なデータはサンプルにフォールバックします。保存失敗は画面に通知します。複数端末やタブ間の同期は行いません。
 
+## Inspect UI
+
+トップバーのコードアイコン（Inspect UI）から、現在の画面のUI SpecをJSONで確認・編集できます。`Apply`または`⌘ / Ctrl + Enter`で構造・Catalog・Action名を検証し、リロードなしでRendererへ反映します。無効なJSONやSpecはエラーを表示し、表示中のSpecは変更しません。
+
+適用済みの編集は`app/app.vue`の画面別メモリに保持され、画面を切り替えて戻っても利用できます。`Restore server spec`で元のSpecに戻し、未適用の入力も破棄できます。閉じる操作・画面移動で未適用の入力は破棄されます。上書きはlocalStorageにもサーバーにも保存せず、ページの再読み込みで消えます。`SpecInspector.vue`は開発者向けの編集パネルのみを担当し、業務画面は引き続きSpecから描画します。
+
 ## 動的配信への拡張
 
 1. `getViewSpec()`の静的マップをAPI・DB・バージョン付きSpecリポジトリの取得処理に置き換えます。クライアントのRendererはそのまま利用できます。

@@ -2,17 +2,18 @@
 
 ## 範囲
 
-Orbitの4画面、共通シェル、新規作成・検索ダイアログを対象に、Nuxt 4 / Nuxt UI 4 / json-render 0.21.0の実装と描画を確認しました。デザイン規約は`AGENTS.md`、依存関係と既存設定を参照しています。初期プロジェクトに独自のデザインシステム文書はありませんでした。
+Orbitの4画面、共通シェル、新規作成・検索ダイアログ、Inspect UIを対象に、Nuxt 4 / Nuxt UI 4 / json-render 0.21.0の実装と描画を確認しました。デザイン規約は`AGENTS.md`、依存関係と既存設定を参照しています。初期プロジェクトに独自のデザインシステム文書はありませんでした。
 
 ## 検証結果
 
-| コマンド           | 結果                                                       |
-| ------------------ | ---------------------------------------------------------- |
-| `vp check --fix`   | フォーマット・lint・TypeScriptチェック成功                 |
-| `vp run typecheck` | Vue SFCを含む型チェック成功、exit 0                        |
-| `vp run build`     | CSRクライアントとNitro APIの本番ビルド成功、exit 0         |
-| `vp run test`      | 本番ビルドをBunで自動起動し、Chromiumの8テスト成功、exit 0 |
-| `git diff --check` | 空白エラーなし                                             |
+| コマンド                                                  | 結果                                                        |
+| --------------------------------------------------------- | ----------------------------------------------------------- |
+| `vp check --fix`                                          | フォーマット・lint・TypeScriptチェック成功                  |
+| `vp run typecheck`                                        | Vue SFCを含む型チェック成功、exit 0                         |
+| `vp run build`                                            | CSRクライアントとNitro APIの本番ビルド成功、exit 0          |
+| `vp exec playwright test tests/browser/inspector.spec.ts` | Inspect UIの3テスト成功、exit 0                             |
+| `vp exec playwright test`                                 | 本番ビルドをBunで自動起動し、Chromiumの11テスト成功、exit 0 |
+| `git diff --check`                                        | 空白エラーなし                                              |
 
 ブラウザテストの内容は次の通りです。
 
@@ -25,6 +26,9 @@ Orbitの4画面、共通シェル、新規作成・検索ダイアログを対�
 - 320px幅の一覧・詳細・プロジェクト・作成ダイアログ、横方向のページあふれがないこと。
 - 1440px幅を200%にした場合に相当する720px幅のレイアウト。
 - API失敗時のエラー表示とRetryによる復帰。
+- Inspect UIでのJSON・画面構造編集、Apply前の非反映、Apply後のリロードなしの反映、Actionの維持。
+- 不正JSON・参照・Actionの拒否、サーバーSpecへの復元、閉じる操作後のフォーカス復帰。
+- Inspect UIの4画面への追従と320px幅、画面移動後の適用済みSpec保持、再読み込み後の破棄、サーバーSpecの不変と書き込みリクエストがないこと。
 
 スクリーンショットは`test-results/all-issues.png`、`issue-detail.png`、`projects.png`、`mobile.png`です。開発サーバーのスクリーンショットを目視確認し、本番版でも同じテストを実行しています。主フローではJavaScript例外・console errorが発生しないことも検証しています。
 
