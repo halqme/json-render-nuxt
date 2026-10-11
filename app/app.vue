@@ -35,6 +35,15 @@ const {
 });
 // UI overrides are intentionally separate from fetched specs and persisted tracker data.
 const inspectOpen = ref(false);
+const issueComposerLoaded = ref(false);
+// Keep the modal mounted after its first use so closing transitions and focus restoration finish.
+watch(
+  tracker.newIssueOpen,
+  (open) => {
+    if (open) issueComposerLoaded.value = true;
+  },
+  { immediate: true },
+);
 const specOverrides = shallowRef<Record<string, Spec>>({});
 const activeSpec = computed(() => specOverrides.value[viewName.value] ?? spec.value ?? null);
 const hasOverride = computed(() => Object.hasOwn(specOverrides.value, viewName.value));
@@ -102,7 +111,7 @@ const notice = computed(() => tracker.state.value.notice);
             </ActionProvider>
           </StateProvider>
         </div>
-        <SpecInspector
+        <LazySpecInspector
           v-if="inspectOpen"
           id="ui-spec-inspector"
           :spec="activeSpec"
@@ -127,7 +136,7 @@ const notice = computed(() => tracker.state.value.notice);
         />
       </div>
     </AppShell>
-    <NewIssueModal />
+    <LazyNewIssueModal v-if="issueComposerLoaded" />
   </UApp>
 </template>
 

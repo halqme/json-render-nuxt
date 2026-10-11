@@ -23,25 +23,33 @@ vp run build
 vp run preview
 ```
 
-`vp run test`は先に本番ビルドを実行し、Playwrightが専用の`http://127.0.0.1:3100`でビルド済みサーバーをBunで自動起動します。同ポートのサーバーが起動済みなら再利用します。スクリーンショットと失敗時のトレースは、Git管理外の`test-results/`に保存されます。
+`vp run test`は先に本番ビルドを実行し、Playwrightが専用の`http://127.0.0.1:3100`でビルド済みサーバーをBunで自動起動します。既存サーバーは再利用せず、同ポートが使用中の場合は停止してから実行してください。スクリーンショットと失敗時のトレースは、Git管理外の`test-results/`に保存されます。
 
 Nuxtは外部の`vite.config.ts`に警告を出しますが、このファイルはVite Plusのタスク・lint・format設定として維持しています。Nuxt固有の設定は`nuxt.config.ts`にあります。
 
 ## 実装の責務
 
-| レイヤー        | ファイル                         | 責務                                                                                   |
-| --------------- | -------------------------------- | -------------------------------------------------------------------------------------- |
-| Static shell    | `app/components/AppShell.vue`    | サイドバー、ワークスペース選択、ナビゲーション、コマンドパレット、ユーザーメニュー     |
-| Catalog         | `shared/catalog.ts`              | 20個の部品のprops、slots、events、および7個のActionの契約                              |
-| Registry        | `app/utils/registry.ts`          | Catalogの部品をNuxt UIと意味のあるHTMLに対応付ける。画面構造は持たない                 |
-| UI Spec         | `server/utils/view-specs.ts`     | ヘッダー、ツールバー、グループ、繰り返し、詳細の領域、表示条件、イベントとActionの接続 |
-| Views API       | `server/api/views/[view].get.ts` | 指定された静的Specを検証しJSONとして返す                                               |
-| Renderer host   | `app/app.vue`                    | Specを取得し、共通ProvidersとRendererで描画。ロード・エラー・再試行を処理              |
-| Mock records    | `shared/mock-data.ts`            | 22件のIssue、4プロジェクト、5人の担当者、コメント・変更履歴の初期データ                |
-| State / Actions | `app/composables/useTracker.ts`  | 外部StateStore、フィルターからの派生データ、変更処理、履歴、URL、ローカル保存          |
-| Spec validation | `shared/validate-view.ts`        | Catalogの構造・props、参照構造、Action名をサーバーとクライアントで検証                 |
+| レイヤー        | ファイル                                        | 責務                                                                                     |
+| --------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Static shell    | `app/components/AppShell.vue`                   | サイドバー、ワークスペース選択、ナビゲーション、コマンドパレット、ユーザーメニュー       |
+| Catalog         | `shared/catalog.ts`                             | 20個の部品のprops、slots、events、および7個のActionの契約                                |
+| Registry        | `app/utils/registry.ts` / `app/utils/registry/` | 共通・Issue一覧・詳細・Projectの型付き部品定義を合成し、Actionを接続。画面構造は持たない |
+| UI Spec         | `server/utils/view-specs.ts`                    | ヘッダー、ツールバー、グループ、繰り返し、詳細の領域、表示条件、イベントとActionの接続   |
+| Views API       | `server/api/views/[view].get.ts`                | 指定された静的Specを検証しJSONとして返す                                                 |
+| Renderer host   | `app/app.vue`                                   | Specを取得し、共通ProvidersとRendererで描画。ロード・エラー・再試行を処理                |
+| Mock records    | `shared/mock-data.ts`                           | 22件のIssue、4プロジェクト、5人の担当者、コメント・変更履歴の初期データ                  |
+| State / Actions | `app/composables/useTracker.ts`                 | 外部StateStore、フィルターからの派生データ、変更処理、履歴、URL、ローカル保存            |
+| Spec validation | `shared/validate-view.ts`                       | Catalogの構造・props、参照構造、Action名をサーバーとクライアントで検証                   |
 
 新規作成ダイアログは共通アプリ操作として`NewIssueModal.vue`に実装しています。主要な4画面をまとめたページコンポーネントはありません。
+
+## コードとチャンクの分割
+
+Registryの描画定義は`common.ts`、`issues.ts`、`detail.ts`、`projects.ts`に分け、共通のアイコン・アバターなどを`presentation.ts`で共有します。各定義はCatalogの型で検査され、`registry.ts`で全20部品を登録します。画面ごとに登録部品を制限しないため、Inspect UIでもCatalog内の部品を自由に組み合わせられます。
+
+`nuxt.config.ts`の`vite.$client`でVueランタイム、Nuxt UI関連、json-render / Zodの依存チャンクを分離します。サーバービルドのentryは変更しません。Inspect UIと新規Issue作成のコンポーネントJS・CSSは初回に開いたときに読み込み、新規作成モーダルは以後マウントを維持して閉じるアニメーションを完了させます。共通依存は初回から必要なため、この分割は総転送量の削減を保証するものではありません。
+
+`tests/browser/bundle.spec.ts`で本番JSの500kB上限と機能コードの遅延読み込み・再利用を検証します。
 
 ## Specの取得と画面構成
 

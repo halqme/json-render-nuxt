@@ -12,7 +12,7 @@ Orbitの4画面、共通シェル、新規作成・検索ダイアログ、Inspe
 | `vp run typecheck`                                        | Vue SFCを含む型チェック成功、exit 0                         |
 | `vp run build`                                            | CSRクライアントとNitro APIの本番ビルド成功、exit 0          |
 | `vp exec playwright test tests/browser/inspector.spec.ts` | Inspect UIの3テスト成功、exit 0                             |
-| `vp exec playwright test`                                 | 本番ビルドをBunで自動起動し、Chromiumの11テスト成功、exit 0 |
+| `vp exec playwright test`                                 | 本番ビルドをBunで自動起動し、Chromiumの13テスト成功、exit 0 |
 | `git diff --check`                                        | 空白エラーなし                                              |
 
 ブラウザテストの内容は次の通りです。
@@ -29,6 +29,10 @@ Orbitの4画面、共通シェル、新規作成・検索ダイアログ、Inspe
 - Inspect UIでのJSON・画面構造編集、Apply前の非反映、Apply後のリロードなしの反映、Actionの維持。
 - 不正JSON・参照・Actionの拒否、サーバーSpecへの復元、閉じる操作後のフォーカス復帰。
 - Inspect UIの4画面への追従と320px幅、画面移動後の適用済みSpec保持、再読み込み後の破棄、サーバーSpecの不変と書き込みリクエストがないこと。
+- 全クライアントJSチャンクが500,000 bytes以下であること。
+- Inspect UI・新規作成モーダルの実装コードが初期取得したJSに含まれず、初回に開くと取得されること。再度開いてもJSリクエストが増えないこと。
+
+Playwrightはポート3100の既存サーバーを再利用せず、検査対象の`.output`をBunで起動します。
 
 スクリーンショットは`test-results/all-issues.png`、`issue-detail.png`、`projects.png`、`mobile.png`です。開発サーバーのスクリーンショットを目視確認し、本番版でも同じテストを実行しています。主フローではJavaScript例外・console errorが発生しないことも検証しています。
 
@@ -50,7 +54,7 @@ RTL、翻訳文字列、実ブラウザのズーム倍率変更、スクリー�
 ## 注意事項
 
 - 既存のVite Plus設定を維持しているため、Nuxtの開発時に外部`vite.config.ts`の警告が出ます。Nuxtの設定は`nuxt.config.ts`に記述しています。
-- 本番ビルドには500kBを超えるクライアントチャンクの警告が残っています（約753kB、gzip約219kB）。機能テストとビルドは成功しています。
+- 本番ビルドの最大クライアントJSチャンクは約288kB（ビルド表示のgzip約79kB）で、500kB超過の警告はありません。分割は総転送量や初期表示速度の改善を保証するものではありません。
 - データはブラウザ内のモックです。複数タブ・端末間の同期、認証・権限、実データAPIは対象外です。
 
 ## Verdict

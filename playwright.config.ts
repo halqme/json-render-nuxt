@@ -12,7 +12,7 @@ export default defineConfig({
     command: "bun .output/server/index.mjs",
     env: { NITRO_HOST: "127.0.0.1", NITRO_PORT: "3100" },
     url: "http://127.0.0.1:3100",
-    reuseExistingServer: true,
+    reuseExistingServer: false,
     stdout: "pipe",
     stderr: "pipe",
   },
