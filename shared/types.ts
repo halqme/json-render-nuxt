@@ -4,6 +4,18 @@ export const priorities = ["Urgent", "High", "Medium", "Low"] as const;
 export type IssueStatus = (typeof statuses)[number];
 export type IssuePriority = (typeof priorities)[number];
 
+export const demoPersonaIds = ["employee", "manager", "guest"] as const;
+export type DemoPersona = (typeof demoPersonaIds)[number];
+
+export interface DemoPersonaInfo {
+  id: DemoPersona;
+  name: string;
+  initials: string;
+  role: string;
+  description: string;
+  userId: string | null;
+}
+
 export interface Issue {
   id: string;
   title: string;
@@ -48,7 +60,7 @@ export interface Activity {
 }
 
 export type CreateIssueInput = Pick<Issue, "title"> &
-  Partial<Omit<Issue, "id" | "title" | "createdAt">>;
+  Partial<Omit<Issue, "id" | "title" | "createdAt" | "status">>;
 
 export interface IssueGroup {
   status: IssueStatus;
@@ -59,6 +71,12 @@ export interface IssueGroup {
 export type WorkspaceId = "orbit" | "sandbox";
 
 export interface TrackerState extends Record<string, unknown> {
+  persona: DemoPersona;
+  personaUserId: string | null;
+  personaName: string;
+  personaInitials: string;
+  personaRole: string;
+  personas: DemoPersonaInfo[];
   workspaceId: WorkspaceId;
   workspaceName: string;
   view: string;

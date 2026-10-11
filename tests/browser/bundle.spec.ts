@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { readdirSync, statSync } from "node:fs";
 
 const clientAssets = new URL("../../.output/public/_nuxt/", import.meta.url);
@@ -11,7 +11,9 @@ test("production JavaScript chunks stay within the 500 kB budget", () => {
   }
 });
 
-test("Inspect and issue composer load on demand and reuse downloaded chunks", async ({ page }) => {
+test("issue detail inspector and composer load on demand and reuse downloaded chunks", async ({
+  page,
+}) => {
   const scripts: string[] = [];
   const sources: Promise<string>[] = [];
   const failures: string[] = [];
@@ -40,9 +42,14 @@ test("Inspect and issue composer load on demand and reuse downloaded chunks", as
   expect(initialSources.some((source) => source.includes("ui-spec-json"))).toBe(false);
   expect(initialSources.some((source) => source.includes("orbit-issue-title"))).toBe(false);
 
+  await page
+    .getByRole("button", { name: "ENG-101: Fix session expiry during workspace switching" })
+    .click();
   await page.getByRole("button", { name: "Inspect UI", exact: true }).click();
   const inspector = page.getByRole("complementary", { name: "Inspect UI", exact: true });
-  await expect(inspector.getByRole("textbox", { name: "UI Spec JSON" })).toHaveValue(/All issues/);
+  await expect(inspector.getByRole("textbox", { name: "UI Spec JSON" })).toHaveValue(
+    /WorkflowPanel/,
+  );
   expect(scripts.length).toBeGreaterThan(initialScripts);
   expect((await Promise.all(sources)).some((source) => source.includes("ui-spec-json"))).toBe(true);
   const afterInspect = scripts.length;
@@ -52,6 +59,7 @@ test("Inspect and issue composer load on demand and reuse downloaded chunks", as
   expect(scripts.length).toBe(afterInspect);
   await inspector.getByRole("button", { name: "Close Inspect UI" }).click();
 
+  await page.getByRole("button", { name: "Back to issues", exact: true }).click();
   await page.getByRole("button", { name: "New issue", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "New issue", exact: true });
   await expect(dialog).toBeVisible();

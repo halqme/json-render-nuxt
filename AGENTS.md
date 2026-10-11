@@ -25,7 +25,7 @@ export default defineConfig({
 
 ## check
 
-run each turn.
+run each turn that includes edits.
 
 ```sh
 vp check --fix

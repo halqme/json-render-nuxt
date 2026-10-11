@@ -1,4 +1,5 @@
-import { test, expect, type Locator } from "@playwright/test";
+import type { Locator } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 async function expectReadableText(locator: Locator) {
   const ratio = await locator.evaluate((element) => {
@@ -35,29 +36,32 @@ async function expectReadableText(locator: Locator) {
   expect(ratio).toBeGreaterThanOrEqual(4.5);
 }
 
-test("theme changes preserve filters and client specs, and persist after reload", async ({
+test("theme changes preserve the issue detail Spec override without changing the server spec", async ({
   page,
   request,
 }) => {
   await page.goto("/?view=issues");
   await expect(page.locator(".jr-issue-row").first()).toBeVisible();
-  const original = await (await request.get("/api/views/all-issues")).json();
   await page.getByRole("textbox", { name: "Search issues", exact: true }).fill("ENG-101");
   await expect(page.locator(".jr-issue-row")).toHaveCount(1);
+  await page
+    .getByRole("button", { name: "ENG-101: Fix session expiry during workspace switching" })
+    .click();
+  const original = await (
+    await request.get("/api/views/issue-detail?workspace=orbit&issue=ENG-101")
+  ).json();
   await page.getByRole("button", { name: "Inspect UI", exact: true }).click();
   const inspector = page.getByRole("complementary", { name: "Inspect UI", exact: true });
   const changed = structuredClone(original);
-  changed.elements.heading.props.title = "Theme preview";
+  changed.elements["workflow-message"]!.props.text = "Theme preview";
   await inspector.getByRole("textbox", { name: "UI Spec JSON" }).fill(JSON.stringify(changed));
   await inspector.getByRole("button", { name: "Apply", exact: true }).click();
   await page.getByRole("button", { name: "Switch to light mode", exact: true }).click();
   await expect(page.locator("html")).not.toHaveClass(/dark/);
-  await expect(page.getByRole("heading", { name: "Theme preview", exact: true })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Search issues", exact: true })).toHaveValue(
-    "ENG-101",
-  );
-  await expect(page.locator(".jr-issue-row")).toHaveCount(1);
-  expect(await (await request.get("/api/views/all-issues")).json()).toEqual(original);
+  await expect(page.getByText("Theme preview", { exact: true })).toBeVisible();
+  expect(
+    await (await request.get("/api/views/issue-detail?workspace=orbit&issue=ENG-101")).json(),
+  ).toEqual(original);
   await page.reload();
   await expect(
     page.getByRole("button", { name: "Switch to dark mode", exact: true }),
@@ -99,11 +103,9 @@ for (const mode of ["light", "dark"] as const) {
     await expectReadableText(page.locator(".jr-issue-id").first());
     const row = page.locator(".jr-issue-row").first();
     await row.hover();
-    await expectReadableText(row.locator('.person-avatar [data-slot="fallback"]'));
     await row.getByRole("checkbox").check();
     await row.hover();
     await expectReadableText(row.locator(".jr-issue-id"));
-    await expectReadableText(row.locator('.person-avatar [data-slot="fallback"]'));
     await row.getByRole("checkbox").uncheck();
     await page.mouse.move(0, 0);
     await page.screenshot({
@@ -167,7 +169,7 @@ for (const mode of ["light", "dark"] as const) {
     await page.getByRole("button", { name: "Inspect UI", exact: true }).click();
     const inspector = page.getByRole("complementary", { name: "Inspect UI", exact: true });
     const editor = inspector.getByRole("textbox", { name: "UI Spec JSON" });
-    await expect(editor).toHaveValue(/PropertyField/);
+    await expect(editor).toHaveValue(/WorkflowPanel/);
     await expectReadableText(editor);
     await page.screenshot({
       path: `test-results/theme-${mode}-inspector.png`,

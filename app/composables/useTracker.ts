@@ -1,31 +1,43 @@
 import { createStateStore } from "@json-render/core";
 import { computed, shallowRef, ref, watch } from "vue";
 import { useRoute, useRouter } from "#app";
-import { initialActivities, initialIssues, people, projects } from "../../shared/mock-data";
-import { priorities, statuses } from "../../shared/types";
+import { people } from "../../shared/mock-data";
+import { demoPersonaIds, priorities, statuses } from "../../shared/types";
 import type {
   Activity,
   CreateIssueInput,
+  DemoPersona,
+  DemoPersonaInfo,
   Issue,
+  Project,
   TrackerState,
   WorkspaceId,
 } from "../../shared/types";
 
-const STORAGE_KEY = "linear-mock-tracker:v1";
 const ACTIVE_WORKSPACE_KEY = "orbit:active-workspace";
 const workspaces = {
-  orbit: { name: "Orbit", storageKey: STORAGE_KEY },
-  sandbox: { name: "Orbit Sandbox", storageKey: "linear-mock-tracker:sandbox:v1" },
+  orbit: { name: "Orbit" },
+  sandbox: { name: "Orbit Sandbox" },
 } as const;
 let workspaceId: WorkspaceId = "orbit";
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
-let issues = clone(initialIssues);
-let activityRecords = clone(initialActivities);
+let issues: Issue[] = [];
+let activityRecords: Activity[] = [];
+let projectRecords: Project[] = [];
+let loading: Promise<boolean> | null = null;
+let recordsLoaded = false;
+let busy = false;
 let hydrated = false;
 let deriving = false;
 let lastFilters = "";
 
 const store = createStateStore({
+  persona: "employee" as DemoPersona,
+  personaUserId: null as string | null,
+  personaName: "Alex Morgan",
+  personaInitials: "AM",
+  personaRole: "Employee",
+  personas: [] as DemoPersonaInfo[],
   workspaceId,
   workspaceName: workspaces[workspaceId].name,
   view: "issues",
@@ -39,7 +51,7 @@ const store = createStateStore({
   allIssues: clone(issues),
   filteredCount: 0,
   totalCount: issues.length,
-  projects: clone(projects),
+  projects: [],
   people: clone(people),
   selectedIssue: null,
   activities: [],
@@ -64,7 +76,8 @@ function derive() {
     const query = s.query.trim().toLowerCase();
     const scoped = issues.filter(
       (issue) =>
-        (s.view !== "my-issues" || issue.assignee === "alex") &&
+        (s.view !== "my-issues" ||
+          (s.personaUserId !== null && issue.assignee === s.personaUserId)) &&
         (noFilter(s.projectFilter) || issue.project === s.projectFilter),
     );
     const filtered = scoped.filter(
@@ -88,7 +101,7 @@ function derive() {
       }),
       "/filteredCount": filtered.length,
       "/totalCount": scoped.length,
-      "/projects": projects.map((project) => ({
+      "/projects": projectRecords.map((project) => ({
         ...project,
         issueCount: issues.filter((issue) => issue.project === project.id).length,
       })),
@@ -113,6 +126,7 @@ store.subscribe(() => {
   if (deriving) return;
   const filters = JSON.stringify([
     s.view,
+    s.personaUserId,
     s.query,
     s.statusFilter,
     s.priorityFilter,
@@ -127,9 +141,6 @@ store.subscribe(() => {
 });
 derive();
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 function validProperty(field: string, value: unknown): boolean {
   switch (field) {
     case "title":
@@ -143,78 +154,61 @@ function validProperty(field: string, value: unknown): boolean {
     case "assignee":
       return value === "" || people.some((person) => person.id === value);
     case "project":
-      return value === "" || projects.some((project) => project.id === value);
+      return value === "" || projectRecords.some((project) => project.id === value);
     case "labels":
       return Array.isArray(value) && value.every((label) => typeof label === "string");
     default:
       return false;
   }
 }
-function validIssue(value: unknown): value is Issue {
-  return (
-    isRecord(value) &&
-    typeof value.id === "string" &&
-    value.id.length > 0 &&
-    typeof value.createdAt === "string" &&
-    Number.isFinite(Date.parse(value.createdAt)) &&
-    ["title", "description", "status", "priority", "assignee", "project", "labels"].every((field) =>
-      validProperty(field, value[field]),
-    )
-  );
+type Records = { issues: Issue[]; activities: Activity[] };
+type ProjectResponse = { projects: Project[]; people: typeof people };
+type PersonaResponse = {
+  persona: DemoPersona;
+  personaInfo: DemoPersonaInfo;
+  personas: DemoPersonaInfo[];
+};
+
+function applyRecords(records: Records) {
+  issues = records.issues;
+  activityRecords = records.activities;
+  derive();
 }
-function validActivity(value: unknown): value is Activity {
-  return (
-    isRecord(value) &&
-    typeof value.id === "string" &&
-    value.id.length > 0 &&
-    typeof value.issueId === "string" &&
-    typeof value.author === "string" &&
-    people.some((person) => person.id === value.author) &&
-    typeof value.text === "string" &&
-    typeof value.createdAt === "string" &&
-    Number.isFinite(Date.parse(value.createdAt)) &&
-    (value.type === "comment" || value.type === "change")
-  );
-}
-function uniqueIds(records: { id: string }[]) {
-  return new Set(records.map((record) => record.id)).size === records.length;
-}
-function loadWorkspace() {
-  // Always begin with fresh records, never the workspace we just left.
-  issues = clone(initialIssues);
-  activityRecords = clone(initialActivities);
-  if (typeof window === "undefined") return;
+async function loadWorkspace(id = workspaceId): Promise<boolean> {
   try {
-    const raw = window.localStorage.getItem(workspaces[workspaceId].storageKey);
-    if (!raw) return;
-    const saved: unknown = JSON.parse(raw);
-    if (
-      !isRecord(saved) ||
-      !Array.isArray(saved.issues) ||
-      !saved.issues.every(validIssue) ||
-      !Array.isArray(saved.activities) ||
-      !saved.activities.every(validActivity) ||
-      !uniqueIds(saved.issues) ||
-      !uniqueIds(saved.activities)
-    ) {
-      throw new Error("Invalid tracker data");
-    }
-    const savedIssues = saved.issues;
-    if (
-      !saved.activities.every((activity) =>
-        savedIssues.some((issue) => issue.id === activity.issueId),
-      )
-    ) {
-      throw new Error("Unknown activity issue");
-    }
-    issues = clone(savedIssues);
-    activityRecords = clone(saved.activities);
+    const [records, projectData] = await Promise.all([
+      $fetch<Records>(`/api/workspaces/${id}/records`, { retry: 0 }),
+      $fetch<ProjectResponse>(`/api/workspaces/${id}/projects`, { retry: 0 }),
+    ]);
+    workspaceId = id;
+    projectRecords = projectData.projects;
+    store.update({ "/workspaceId": id, "/workspaceName": workspaces[id].name, "/notice": "" });
+    store.set("/people", clone(projectData.people));
+    applyRecords(records);
+    recordsLoaded = true;
+    return true;
   } catch {
-    store.set("/notice", "Saved data could not be loaded. Using the sample workspace.");
+    store.set(
+      "/notice",
+      "Records could not be loaded. Reload to retry; no sample data was substituted.",
+    );
+    return false;
   }
 }
-function hydrate() {
-  if (hydrated || typeof window === "undefined") return;
+async function loadPersona() {
+  const session = await $fetch<PersonaResponse>("/api/demo/persona", { retry: 0 });
+  store.update({
+    "/persona": session.persona,
+    "/personaUserId": session.personaInfo.userId,
+    "/personaName": session.personaInfo.name,
+    "/personaInitials": session.personaInfo.initials,
+    "/personaRole": session.personaInfo.role,
+    "/personas": session.personas,
+  });
+}
+function hydrate(): Promise<boolean> {
+  if (loading) return loading;
+  if (hydrated || typeof window === "undefined") return Promise.resolve(hydrated);
   hydrated = true;
   try {
     const preferred = window.localStorage.getItem(ACTIVE_WORKSPACE_KEY);
@@ -224,40 +218,48 @@ function hydrate() {
   } catch {
     store.set("/notice", "Workspace preference could not be loaded. Opening Orbit.");
   }
-  loadWorkspace();
-  store.update({
-    "/workspaceId": workspaceId,
-    "/workspaceName": workspaces[workspaceId].name,
-  });
-  derive();
+  loading = (async () => {
+    try {
+      await loadPersona();
+      return await loadWorkspace();
+    } catch {
+      store.set("/notice", "Demo persona could not be loaded. Reload to retry.");
+      return false;
+    }
+  })();
+  return loading;
 }
-function persist(): boolean {
-  if (typeof window === "undefined") return true;
+async function mutate(path: string, method: "POST" | "PATCH", body: unknown) {
+  if (loading) await loading;
+  if (!recordsLoaded) {
+    store.set("/notice", "Load the workspace records before saving. Reload to retry.");
+    return null;
+  }
+  if (busy) {
+    store.set("/notice", "Wait for the current save to finish.");
+    derive();
+    return null;
+  }
+  busy = true;
+  store.set("/notice", "Saving…");
+  derive();
   try {
-    window.localStorage.setItem(
-      workspaces[workspaceId].storageKey,
-      JSON.stringify({ issues, activities: activityRecords }),
+    const result = await $fetch<Records & { issue?: Issue }>(
+      `/api/workspaces/${workspaceId}/${path}`,
+      { method, body: body as Record<string, unknown>, retry: 0 },
     );
-    return true;
+    applyRecords(result);
+    return result;
   } catch {
     store.set(
       "/notice",
-      "Your change is available in this session, but could not be saved locally.",
+      "Save could not be confirmed. Your draft was kept. Reload to check the server before retrying.",
     );
-    return false;
+    derive();
+    return null;
+  } finally {
+    busy = false;
   }
-}
-function addHistory(issueId: string, text: string, type: Activity["type"]) {
-  let id = `activity-${Date.now()}-${activityRecords.length + 1}`;
-  while (activityRecords.some((activity) => activity.id === id)) id += "-1";
-  activityRecords.push({
-    id,
-    issueId,
-    author: "alex",
-    text,
-    type,
-    createdAt: new Date().toISOString(),
-  });
 }
 function resetFilters() {
   store.update({
@@ -270,7 +272,7 @@ function resetFilters() {
     "/selectedIds": [],
   });
 }
-function changeProperty(params: Record<string, unknown>) {
+async function changeProperty(params: Record<string, unknown>) {
   const issue = issues.find((record) => record.id === snapshot().selectedIssue?.id);
   if (!issue) {
     store.set("/notice", "Open an issue before changing a property.");
@@ -283,30 +285,10 @@ function changeProperty(params: Record<string, unknown>) {
   }
   const key = field as keyof Omit<Issue, "id" | "createdAt">;
   if (JSON.stringify(issue[key]) === JSON.stringify(value)) return;
-  const display = (entry: unknown) => {
-    if (key === "assignee")
-      return people.find((person) => person.id === entry)?.name ?? "Unassigned";
-    if (key === "project")
-      return projects.find((project) => project.id === entry)?.name ?? "No project";
-    return Array.isArray(entry)
-      ? entry.join(", ") || "none"
-      : typeof entry === "string"
-        ? entry || "empty"
-        : "empty";
-  };
-  const updated = { ...issue, [key]: clone(value) } as Issue;
-  if (key === "title") updated.title = updated.title.trim();
-  issues = issues.map((record) => (record.id === issue.id ? updated : record));
-  addHistory(
-    issue.id,
-    `Changed ${key} from ${display(issue[key])} to ${display(updated[key])}.`,
-    "change",
-  );
-  store.set("/notice", `${issue.id} updated.`);
-  derive();
-  persist();
+  if (await mutate(`issues/${issue.id}`, "PATCH", { [key]: value }))
+    store.set("/notice", `${issue.id} updated.`);
 }
-function addComment() {
+async function addComment() {
   const s = snapshot();
   if (!s.selectedIssue) {
     store.set("/notice", "Open an issue before adding a comment.");
@@ -317,17 +299,33 @@ function addComment() {
     store.set("/notice", "Write a comment before posting.");
     return;
   }
-  addHistory(s.selectedIssue.id, text, "comment");
-  store.update({ "/draftComment": "", "/notice": "Comment added." });
-  derive();
-  persist();
+  if (await mutate(`issues/${s.selectedIssue.id}/comments`, "POST", { text })) {
+    store.update({
+      ...(snapshot().draftComment === s.draftComment ? { "/draftComment": "" } : {}),
+      "/notice": "Comment added.",
+    });
+  }
+}
+async function workflowAction(params: Record<string, unknown> = {}) {
+  const s = snapshot();
+  const action = params.action;
+  if (
+    !s.selectedIssue ||
+    typeof action !== "string" ||
+    !["start-work", "request-review", "approve"].includes(action)
+  ) {
+    store.set("/notice", "That workflow action is not available.");
+    return;
+  }
+  const result = await mutate(`issues/${s.selectedIssue.id}/workflow`, "POST", { action });
+  if (result?.issue) store.set("/notice", `${result.issue.id} workflow updated.`);
 }
 
 /** Shared CSR workspace. Invoke within Nuxt setup so route composables have context. */
 export function useTracker() {
   const route = useRoute();
   const router = useRouter();
-  hydrate();
+  const ready = hydrate();
   const queryValue = (value: unknown) => (typeof value === "string" ? value : "");
   function selectIssue(id: string) {
     const issue = issues.find((record) => record.id === id) ?? null;
@@ -335,25 +333,40 @@ export function useTracker() {
     store.update({
       "/selectedIssue": issue ? clone(issue) : null,
       ...(changed ? { "/draftComment": "" } : {}),
-      ...(id && !issue ? { "/notice": `Issue ${id} was not found.` } : {}),
+      ...(id && !issue ? { "/notice": `Issue ${id} is unavailable for this demo persona.` } : {}),
     });
     derive();
+    if (id && !issue) {
+      void routeTo({
+        view: snapshot().view,
+        project: snapshot().projectFilter,
+        issue: "",
+      });
+    }
   }
-  watch(
-    () => [route.query.view, route.query.issue, route.query.project],
-    () => {
+  function syncRoute() {
+    if (!recordsLoaded) return;
+    {
       const view = queryValue(route.query.view) || "issues";
       const project = queryValue(route.query.project);
-      const validProject = projects.some((record) => record.id === project) ? project : "";
+      const validProject = projectRecords.some((record) => record.id === project) ? project : "";
       if (view !== snapshot().view || validProject !== snapshot().projectFilter) {
         resetFilters();
         store.update({ "/view": view, "/projectFilter": validProject });
       }
-      if (project && !validProject) store.set("/notice", `Project ${project} was not found.`);
+      if (project && !validProject) {
+        store.set("/notice", `Project ${project} is unavailable for this demo persona.`);
+        void routeTo({ view, project: "", issue: "" });
+      }
       selectIssue(queryValue(route.query.issue));
-    },
-    { immediate: true },
-  );
+    }
+  }
+  void ready.then((success) => {
+    if (success) syncRoute();
+  });
+  watch(() => [route.query.view, route.query.issue, route.query.project], syncRoute, {
+    immediate: true,
+  });
 
   async function routeTo(query: Record<string, string>) {
     // Switching workspaces can legitimately keep the same issues URL.
@@ -377,8 +390,85 @@ export function useTracker() {
       store.set("/notice", "Navigation failed. Your workspace changes are still available.");
     }
   }
+  async function switchPersona(persona: DemoPersona) {
+    await ready;
+    if (!demoPersonaIds.includes(persona)) {
+      store.set("/notice", "Choose an available demo persona.");
+      return;
+    }
+    if (persona === snapshot().persona) return;
+    if (busy) {
+      store.set("/notice", "Wait for the current save before switching demo personas.");
+      return;
+    }
+
+    const selectedIssueId = snapshot().selectedIssue?.id ?? "";
+    busy = true;
+    recordsLoaded = false;
+    issues = [];
+    activityRecords = [];
+    projectRecords = [];
+    store.update({
+      "/allIssues": [],
+      "/groups": statuses.map((status) => ({ status, count: 0, issues: [] })),
+      "/filteredCount": 0,
+      "/totalCount": 0,
+      "/projects": [],
+      "/selectedIssue": null,
+      "/activities": [],
+      "/draftComment": "",
+      "/selectedIds": [],
+      "/projectFilter": "",
+    });
+    derive();
+    try {
+      const session = await $fetch<PersonaResponse>("/api/demo/persona", {
+        method: "POST",
+        body: { persona },
+        retry: 0,
+      });
+      store.update({
+        "/persona": session.persona,
+        "/personaUserId": session.personaInfo.userId,
+        "/personaName": session.personaInfo.name,
+        "/personaInitials": session.personaInfo.initials,
+        "/personaRole": session.personaInfo.role,
+        "/personas": session.personas,
+      });
+      if (!(await loadWorkspace())) return;
+      resetFilters();
+      store.update({ "/draftComment": "", "/selectedIds": [] });
+      const stillReadable = selectedIssueId && issues.some((issue) => issue.id === selectedIssueId);
+      if (stillReadable) selectIssue(selectedIssueId);
+      else store.update({ "/selectedIssue": null, "/activities": [] });
+      newIssueOpen.value = false;
+      derive();
+      await routeTo({
+        view: snapshot().view,
+        project: snapshot().projectFilter,
+        issue: stillReadable ? selectedIssueId : "",
+      });
+      store.set(
+        "/notice",
+        `Switched to ${session.personaInfo.name} (${session.personaInfo.role}).`,
+      );
+    } catch {
+      try {
+        await loadPersona();
+        await loadWorkspace();
+      } catch {
+        recordsLoaded = false;
+      }
+      store.set(
+        "/notice",
+        "Demo persona could not be changed. Reload to check the current session.",
+      );
+    } finally {
+      busy = false;
+    }
+  }
   function navigate(view: string, project?: string) {
-    if (!view.trim() || (project && !projects.some((record) => record.id === project))) {
+    if (!view.trim() || (project && !projectRecords.some((record) => record.id === project))) {
       store.set("/notice", "Choose a valid view and project.");
       return;
     }
@@ -388,22 +478,20 @@ export function useTracker() {
     return routeTo({ view, project: project || "", issue: "" });
   }
   async function switchWorkspace(id: string): Promise<void> {
+    await ready;
     if (id !== "orbit" && id !== "sandbox") {
       store.set("/notice", "Choose Orbit or Orbit Sandbox.");
       return;
     }
     if (id === workspaceId) return;
-    if (!persist()) {
-      store.set(
-        "/notice",
-        "Workspace could not be saved. Switching was canceled to keep your unsaved changes.",
-      );
+    if (busy) {
+      store.set("/notice", "Wait for the current save before switching workspaces.");
       return;
     }
-    workspaceId = id;
-    store.set("/notice", "");
-    loadWorkspace();
-    const loadNotice = snapshot().notice;
+    busy = true;
+    const loaded = await loadWorkspace(id);
+    busy = false;
+    if (!loaded) return;
     store.update({
       "/workspaceId": workspaceId,
       "/workspaceName": workspaces[workspaceId].name,
@@ -425,13 +513,21 @@ export function useTracker() {
     }
     store.set(
       "/notice",
-      `Switched to ${workspaces[workspaceId].name}, an isolated local demo workspace. Changes do not transfer between workspaces.${loadNotice ? ` ${loadNotice}` : ""}${preferenceNotice}`,
+      `Switched to ${workspaces[workspaceId].name}. Records are stored independently on this server.${preferenceNotice}`,
     );
     await navigate("issues");
   }
+  function toggleIssueSelection(id: string) {
+    if (!issues.some((record) => record.id === id)) return;
+    const selectedIds = snapshot().selectedIds;
+    store.set(
+      "/selectedIds",
+      selectedIds.includes(id) ? selectedIds.filter((item) => item !== id) : [...selectedIds, id],
+    );
+  }
   function openIssue(id: string) {
     if (id && !issues.some((record) => record.id === id)) {
-      store.set("/notice", `Issue ${id} was not found.`);
+      store.set("/notice", `Issue ${id} is unavailable for this demo persona.`);
       return;
     }
     selectIssue(id);
@@ -441,16 +537,15 @@ export function useTracker() {
       issue: id,
     });
   }
-  function createIssue(input: CreateIssueInput): Issue | null {
+  async function createIssue(input: CreateIssueInput): Promise<Issue | null> {
     const values = {
       title: input.title,
       description: input.description ?? "",
-      status: input.status ?? "Todo",
       priority: input.priority ?? "Medium",
-      assignee: input.assignee ?? "alex",
+      assignee: input.assignee ?? snapshot().personaUserId ?? "",
       project:
         input.project ??
-        (projects.some((project) => project.id === snapshot().projectFilter)
+        (projectRecords.some((project) => project.id === snapshot().projectFilter)
           ? snapshot().projectFilter
           : ""),
       labels: input.labels ?? [],
@@ -459,72 +554,30 @@ export function useTracker() {
       store.set("/notice", "Enter a title and valid issue properties.");
       return null;
     }
-    const number =
-      Math.max(100, ...issues.map((issue) => Number(/^ENG-(\d+)$/.exec(issue.id)?.[1]) || 0)) + 1;
-    const issue: Issue = {
-      ...clone(values),
-      title: values.title.trim(),
-      id: `ENG-${number}`,
-      createdAt: new Date().toISOString(),
-    };
-    issues.unshift(issue);
-    addHistory(issue.id, "Created this issue.", "change");
+    const result = await mutate("issues", "POST", values);
+    const issue = result?.issue;
+    if (!issue) return null;
     newIssueOpen.value = false;
     store.set("/notice", `${issue.id} created.`);
     derive();
-    persist();
     void openIssue(issue.id);
     return clone(issue);
   }
-  // Action $item expressions resolve to repeat-item JSON Pointers in 0.21.
-  const readPointer = (path: unknown) =>
-    typeof path === "string" && path.startsWith("/") ? store.get(path) : undefined;
-  const handlers = {
-    navigate: (params: Record<string, unknown> = {}) =>
-      navigate(
-        typeof params.view === "string" ? params.view : "",
-        typeof params.project === "string"
-          ? params.project
-          : (readPointer(params.projectPath) as string | undefined),
-      ),
-    openIssue: (params: Record<string, unknown> = {}) =>
-      openIssue(
-        typeof params.id === "string" ? params.id : (readPointer(params.idPath) as string) || "",
-      ),
-    newIssue: () => {
-      newIssueOpen.value = true;
-    },
-    resetFilters,
-    changeProperty,
-    addComment,
-    toggleSelection: (params: Record<string, unknown> = {}) => {
-      const id = readPointer(params.idPath);
-      if (typeof id !== "string" || !issues.some((issue) => issue.id === id)) {
-        store.set("/notice", "Choose an existing issue to select.");
-        return;
-      }
-      const ids = snapshot().selectedIds;
-      store.set(
-        "/selectedIds",
-        ids.includes(id) ? ids.filter((selectedId) => selectedId !== id) : [...ids, id],
-      );
-    },
-    setTab: (params: Record<string, unknown> = {}) => {
-      if (params.value === "all" || params.value === "active" || params.value === "done")
-        store.set("/tab", params.value);
-      else store.set("/notice", "Choose all, active, or done issues.");
-    },
-  };
   return {
     store,
     state,
     navigate,
     switchWorkspace,
     openIssue,
-    handlers,
+    toggleIssueSelection,
+    changeProperty,
+    addComment,
     newIssueOpen,
     createIssue,
     currentView,
     resetFilters,
+    switchPersona,
+    workflowAction,
+    canWrite: computed(() => state.value.persona !== "guest"),
   };
 }

@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { people, projects } from "../../shared/mock-data";
-import { priorities, statuses } from "../../shared/types";
-import type { IssuePriority, IssueStatus } from "../../shared/types";
+import { priorities } from "../../shared/types";
+import type { IssuePriority } from "../../shared/types";
 
 const tracker = useTracker();
 const open = tracker.newIssueOpen;
 const title = ref("");
 const description = ref("");
-const status = ref<IssueStatus>("Todo");
 const priority = ref<IssuePriority>("Medium");
 const assignee = ref("alex");
 const project = ref("none");
@@ -22,6 +21,7 @@ const projectItems = [
   { label: "No project", value: "none" },
   ...projects.map((item) => ({ label: item.name, value: item.id })),
 ];
+const defaultAssignee = computed(() => tracker.state.value.personaUserId ?? "none");
 const selectedPerson = computed(() => people.find((person) => person.id === assignee.value));
 watch(
   open,
@@ -29,9 +29,8 @@ watch(
     if (!value) return;
     title.value = "";
     description.value = "";
-    status.value = "Todo";
     priority.value = "Medium";
-    assignee.value = "alex";
+    assignee.value = defaultAssignee.value;
     project.value = projects.some((item) => item.id === tracker.state.value.projectFilter)
       ? tracker.state.value.projectFilter
       : "none";
@@ -42,7 +41,7 @@ watch(
 watch(title, () => {
   error.value = "";
 });
-function submit() {
+async function submit() {
   if (submitting.value) return;
   if (!title.value.trim()) {
     error.value = "Give your issue a title before creating it.";
@@ -51,10 +50,9 @@ function submit() {
   }
   submitting.value = true;
   try {
-    const issue = tracker.createIssue({
+    const issue = await tracker.createIssue({
       title: title.value.trim(),
       description: description.value.trim(),
-      status: status.value,
       priority: priority.value,
       assignee: assignee.value === "none" ? "" : assignee.value,
       project: project.value === "none" ? "" : project.value,
@@ -126,17 +124,6 @@ function submitShortcut(event: KeyboardEvent) {
           />
         </div>
         <div class="issue-properties">
-          <div class="property-field">
-            <label for="orbit-issue-status"><UIcon name="i-lucide-circle-dashed" />Status</label>
-            <USelect
-              id="orbit-issue-status"
-              v-model="status"
-              :items="[...statuses]"
-              aria-label="Issue status"
-              color="neutral"
-              class="property-select"
-            />
-          </div>
           <div class="property-field">
             <label for="orbit-issue-priority"><UIcon name="i-lucide-signal" />Priority</label>
             <USelect

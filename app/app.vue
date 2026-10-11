@@ -5,7 +5,25 @@ import { validateViewSpec } from "../shared/validate-view";
 import { createTrackerRegistry } from "./utils/registry";
 
 const tracker = useTracker();
-const { registry, handlers } = createTrackerRegistry(tracker.handlers);
+function resolveRepeatActionValue(value: string) {
+  const resolved = value.startsWith("/") ? tracker.store.get(value) : value;
+  return typeof resolved === "string" ? resolved : value;
+}
+const { registry, handlers } = createTrackerRegistry({
+  navigateToIssues: () => tracker.navigate("issues"),
+  openNewIssue: () => {
+    if (tracker.canWrite.value) tracker.newIssueOpen.value = true;
+  },
+  resetFilters: tracker.resetFilters,
+  openIssue: (issueId) => tracker.openIssue(resolveRepeatActionValue(issueId)),
+  toggleIssueSelection: (issueId) =>
+    tracker.toggleIssueSelection(resolveRepeatActionValue(issueId)),
+  openProject: (projectId) => tracker.navigate("issues", resolveRepeatActionValue(projectId)),
+  workflowAction: tracker.workflowAction,
+  backToIssues: () => tracker.openIssue(""),
+  addComment: tracker.addComment,
+  changeProperty: tracker.changeProperty,
+});
 const actionHandlers = handlers(
   () => (updater) => {
     const next = updater(tracker.store.getSnapshot());
@@ -15,46 +33,89 @@ const actionHandlers = handlers(
   },
   () => tracker.store.getSnapshot(),
 );
-const viewName = computed(() =>
-  tracker.state.value.selectedIssue
-    ? "issue-detail"
-    : tracker.state.value.view === "projects"
-      ? "projects"
-      : tracker.state.value.view === "my-issues"
-        ? "my-issues"
-        : "all-issues",
-);
-const {
-  data: spec,
-  status,
-  error,
-  refresh,
-} = await useFetch(() => `/api/views/${viewName.value}`, {
-  server: false,
-  transform: validateViewSpec,
-});
-// UI overrides are intentionally separate from fetched specs and persisted tracker data.
+
 const inspectOpen = ref(false);
+const viewSpec = shallowRef<Spec | null>(null);
+const viewOverride = shallowRef<Spec | null>(null);
+let viewRequestGeneration = 0;
+const viewError = ref(false);
+const viewLoading = ref(false);
+const viewRetry = ref(0);
+const renderError = ref(false);
+const hasOverride = computed(() => viewOverride.value !== null);
+const activeSpec = computed(() => viewOverride.value ?? viewSpec.value);
 const issueComposerLoaded = ref(false);
-// Keep the modal mounted after its first use so closing transitions and focus restoration finish.
+const viewKey = computed(() => {
+  const state = tracker.state.value;
+  const issue = state.selectedIssue;
+  return [
+    state.workspaceId,
+    state.persona,
+    state.view,
+    issue ? "issue-detail" : "list",
+    issue?.id ?? "",
+    issue?.status ?? "",
+  ].join(":");
+});
+const viewName = computed(() => {
+  if (tracker.state.value.selectedIssue) return "issue detail";
+  switch (tracker.state.value.view) {
+    case "my-issues":
+      return "my issues";
+    case "projects":
+      return "projects";
+    default:
+      return "issues";
+  }
+});
+const isDetailView = computed(() => !!tracker.state.value.selectedIssue);
+const viewErrorMessage = computed(() => `The ${viewName.value} view could not be loaded.`);
+watch(isDetailView, (isDetail) => {
+  if (!isDetail) inspectOpen.value = false;
+});
+
 watch(
-  tracker.newIssueOpen,
-  (open) => {
-    if (open) issueComposerLoaded.value = true;
+  () => [viewKey.value, viewRetry.value],
+  async ([key]) => {
+    const requestGeneration = ++viewRequestGeneration;
+    const isCurrentRequest = () =>
+      requestGeneration === viewRequestGeneration && viewKey.value === key;
+    viewSpec.value = null;
+    viewOverride.value = null;
+    viewError.value = false;
+    renderError.value = false;
+    const keyAtStart = tracker.state.value;
+    const issue = keyAtStart.selectedIssue;
+    const view = issue ? "issue-detail" : keyAtStart.view;
+    if (!issue && !["issues", "my-issues", "projects"].includes(view)) {
+      viewError.value = true;
+      viewLoading.value = false;
+      return;
+    }
+    viewLoading.value = true;
+    try {
+      const input = await $fetch<unknown>(`/api/views/${view}`, {
+        query: issue
+          ? { workspace: keyAtStart.workspaceId, issue: issue.id }
+          : { workspace: keyAtStart.workspaceId },
+        retry: 0,
+      });
+      if (isCurrentRequest()) viewSpec.value = validateViewSpec(input);
+    } catch {
+      if (isCurrentRequest()) viewError.value = true;
+    } finally {
+      if (isCurrentRequest()) viewLoading.value = false;
+    }
   },
-  { immediate: true },
+  { flush: "sync", immediate: true },
 );
-const specOverrides = shallowRef<Record<string, Spec>>({});
-const activeSpec = computed(() => specOverrides.value[viewName.value] ?? spec.value ?? null);
-const hasOverride = computed(() => Object.hasOwn(specOverrides.value, viewName.value));
-function applySpec(next: Spec) {
-  specOverrides.value = { ...specOverrides.value, [viewName.value]: next };
+
+function applySpec(spec: Spec) {
+  viewOverride.value = spec;
   renderError.value = false;
 }
 function restoreSpec() {
-  const next = { ...specOverrides.value };
-  delete next[viewName.value];
-  specOverrides.value = next;
+  viewOverride.value = null;
   renderError.value = false;
 }
 async function closeInspector() {
@@ -62,14 +123,20 @@ async function closeInspector() {
   await nextTick();
   document.querySelector<HTMLButtonElement>('button[aria-label="Inspect UI"]')?.focus();
 }
-const renderError = ref(false);
-watch(viewName, () => {
-  renderError.value = false;
-});
-onErrorCaptured(() => {
+function retryView() {
+  viewRetry.value += 1;
+}
+function handleViewRenderError(error: unknown) {
+  console.error("json-render view render error", error);
   renderError.value = true;
-  return false;
-});
+}
+watch(
+  tracker.newIssueOpen,
+  (open) => {
+    if (open) issueComposerLoaded.value = true;
+  },
+  { immediate: true },
+);
 const notice = computed(() => tracker.state.value.notice);
 </script>
 
@@ -81,43 +148,52 @@ const notice = computed(() => tracker.state.value.notice);
         <div class="view-preview">
           <StateProvider :store="tracker.store">
             <ActionProvider :handlers="actionHandlers">
-              <VisibilityProvider>
-                <div v-if="(error && !hasOverride) || renderError" class="view-status" role="alert">
-                  <UIcon name="i-lucide-triangle-alert" />
-                  <h1>This view couldn't be loaded</h1>
-                  <p>Your local changes are safe. Try loading the view again.</p>
+              <div v-if="viewError" class="view-status" role="alert">
+                <p>{{ viewErrorMessage }}</p>
+                <div class="view-status-actions">
                   <UButton
-                    label="Retry"
+                    label="Retry view"
                     color="neutral"
-                    @click="
-                      renderError = false;
-                      refresh();
-                    "
+                    variant="outline"
+                    @click="retryView"
+                  />
+                  <UButton
+                    v-if="isDetailView"
+                    label="Close issue"
+                    color="neutral"
+                    variant="ghost"
+                    @click="tracker.openIssue('')"
                   />
                 </div>
-                <div
-                  v-else-if="(!hasOverride && status === 'pending') || !activeSpec"
-                  class="view-loading"
-                  role="status"
-                  aria-label="Loading view"
-                >
-                  <USkeleton class="h-8 w-48" />
-                  <USkeleton class="mt-6 h-10 w-full" />
-                  <USkeleton v-for="i in 7" :key="i" class="mt-4 h-8 w-full" />
-                  <span class="sr-only">Loading view…</span>
-                </div>
-                <Renderer v-else :key="viewName" :spec="activeSpec!" :registry="registry" />
-              </VisibilityProvider>
+              </div>
+              <div v-else-if="viewLoading || !activeSpec" class="view-loading" role="status">
+                <USkeleton class="h-24 w-full" />
+                <span class="sr-only">Loading {{ viewName }} view…</span>
+              </div>
+              <div v-else-if="renderError" class="view-status" role="alert">
+                <p>This {{ viewName }} view could not be rendered.</p>
+                <UButton
+                  label="Restore server Spec"
+                  color="neutral"
+                  variant="outline"
+                  @click="restoreSpec"
+                />
+              </div>
+              <RendererErrorBoundary v-else @error="handleViewRenderError">
+                <VisibilityProvider>
+                  <Renderer :spec="activeSpec" :registry="registry" />
+                </VisibilityProvider>
+              </RendererErrorBoundary>
             </ActionProvider>
           </StateProvider>
         </div>
         <LazySpecInspector
-          v-if="inspectOpen"
+          v-if="inspectOpen && isDetailView"
           id="ui-spec-inspector"
           :spec="activeSpec"
-          :view-name="viewName"
+          view-name="issue detail"
           :modified="hasOverride"
-          :loading="!hasOverride && status === 'pending'"
+          :loading="viewLoading"
           @apply="applySpec"
           @reset="restoreSpec"
           @close="closeInspector"
@@ -136,28 +212,6 @@ const notice = computed(() => tracker.state.value.notice);
         />
       </div>
     </AppShell>
-    <LazyNewIssueModal v-if="issueComposerLoaded" />
+    <LazyNewIssueModal v-if="issueComposerLoaded && tracker.canWrite.value" />
   </UApp>
 </template>
-
-<style scoped>
-.view-workbench {
-  min-width: 0;
-}
-.view-workbench.inspecting {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 420px;
-  align-items: start;
-}
-.view-preview {
-  min-width: 0;
-}
-@media (max-width: 1000px) {
-  .view-workbench.inspecting {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .view-workbench.inspecting :deep(.spec-inspector) {
-    order: -1;
-  }
-}
-</style>

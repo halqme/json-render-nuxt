@@ -22,7 +22,7 @@ const activeProject = computed(() =>
 function workspaceInformation() {
   tracker.store.set(
     "/notice",
-    `${workspace.value} is a local demo workspace. Issues are saved separately for each workspace in this browser.`,
+    `${workspace.value} is a local PoC. Employee, manager, and guest personas are simulated demo roles, not real authentication.`,
   );
 }
 const workspaceItems = computed(() => [
@@ -39,7 +39,12 @@ const workspaceItems = computed(() => [
   })),
   { label: "Workspace information", icon: "i-lucide-info", onSelect: workspaceInformation },
 ]);
-const userItems = [
+const userItems = computed(() => [
+  tracker.state.value.personas.map((persona) => ({
+    label: `${persona.role} · ${persona.name}`,
+    icon: tracker.state.value.persona === persona.id ? "i-lucide-check" : "i-lucide-user-round",
+    onSelect: () => void tracker.switchPersona(persona.id),
+  })),
   [
     {
       label: "Reset filters",
@@ -47,12 +52,12 @@ const userItems = [
       onSelect: () => tracker.resetFilters(),
     },
     {
-      label: "About this workspace",
+      label: "About demo personas",
       icon: "i-lucide-info",
       onSelect: workspaceInformation,
     },
   ],
-];
+]);
 const mobileItems = computed(() => [
   workspaceItems.value,
   navigation.map((item) => ({
@@ -60,7 +65,7 @@ const mobileItems = computed(() => [
     icon: item.icon,
     onSelect: () => tracker.navigate(item.view),
   })),
-  userItems[0] ?? [],
+  ...userItems.value,
 ]);
 const results = computed(() => {
   const query = search.value.trim().toLowerCase();
@@ -133,6 +138,7 @@ onMounted(() => window.addEventListener("keydown", shortcut));
 onBeforeUnmount(() => window.removeEventListener("keydown", shortcut));
 function newIssue() {
   searchOpen.value = false;
+  if (!tracker.canWrite.value) return;
   tracker.newIssueOpen.value = true;
 }
 </script>
@@ -155,6 +161,7 @@ function newIssue() {
           </UButton>
         </UDropdownMenu>
         <UButton
+          v-if="tracker.canWrite.value"
           icon="i-lucide-square-pen"
           variant="ghost"
           color="neutral"
@@ -246,10 +253,18 @@ function newIssue() {
             variant="ghost"
             color="neutral"
             class="user-trigger"
-            aria-label="Alex Morgan account menu"
+            :aria-label="`${tracker.state.value.personaName} demo persona menu`"
           >
-            <UAvatar alt="Alex Morgan" text="AM" size="xs" class="user-avatar" />
-            <span class="user-copy">Alex Morgan<span>Personal workspace</span></span>
+            <UAvatar
+              :alt="tracker.state.value.personaName"
+              :text="tracker.state.value.personaInitials"
+              size="xs"
+              class="user-avatar"
+            />
+            <span class="user-copy">
+              {{ tracker.state.value.personaName
+              }}<span>{{ tracker.state.value.personaRole }} · Demo persona</span>
+            </span>
             <UIcon name="i-lucide-chevrons-up-down" />
           </UButton>
         </UDropdownMenu>
@@ -279,6 +294,7 @@ function newIssue() {
         <div class="topbar-actions">
           <ThemeToggle />
           <UButton
+            v-if="tracker.state.value.selectedIssue"
             icon="i-lucide-code-xml"
             variant="ghost"
             color="neutral"
@@ -296,6 +312,7 @@ function newIssue() {
             @click="searchOpen = true"
           />
           <UButton
+            v-if="tracker.canWrite.value"
             icon="i-lucide-plus"
             color="neutral"
             variant="soft"

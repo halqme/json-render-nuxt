@@ -1,323 +1,405 @@
 import type { Spec } from "@json-render/core";
+import type { DemoPersona, Issue } from "../../shared/types";
+import { people } from "../../shared/mock-data";
+import { priorities, statuses } from "../../shared/types";
+import { availableWorkflowAction } from "./personas";
 import { validateViewSpec } from "../../shared/validate-view";
-import { people, projects } from "../../shared/mock-data";
-import { statuses, priorities } from "../../shared/types";
 
-const state = (path: string) => ({ $state: path });
-const bind = (path: string) => ({ $bindState: path });
-const item = (path: string) => ({ $item: path });
-const choices = (values: readonly string[]) => values.map((value) => ({ label: value, value }));
-const peopleOptions = [
-  { label: "Unassigned", value: "" },
-  ...people.map((p) => ({ label: p.name, value: p.id })),
-];
-const projectOptions = [
-  { label: "No project", value: "" },
-  ...projects.map((p) => ({ label: p.name, value: p.id })),
-];
+const workflowActionLabels = {
+  "start-work": "Start work",
+  "request-review": "Request review",
+  approve: "Approve issue",
+} as const;
 
-function issuesView(mine: boolean): Spec {
-  return {
-    root: "page",
+export function getIssuePanelSpec(persona: DemoPersona, issue: Issue): Spec {
+  const action = availableWorkflowAction(persona, issue.status);
+  const message =
+    persona === "guest"
+      ? "Guest access is read-only. You can review the issue, but cannot change its workflow."
+      : issue.status === "In review" && action === null
+        ? "This issue is in review. A manager must approve it."
+        : issue.status === "Done"
+          ? "This issue is complete."
+          : `Available action for ${persona}: ${action ? workflowActionLabels[action] : "none"}.`;
+  const children = ["status", "message"];
+  if (persona === "guest" || issue.status === "Done") children.reverse();
+  if (action) children.push("advance");
+
+  const spec: Spec = {
+    root: "panel",
     elements: {
-      page: {
-        type: "Stack",
-        props: { variant: "page" },
-        children: ["heading", "tabs", "toolbar", "summary", "groups", "empty"],
+      panel: {
+        type: "WorkflowPanel",
+        props: { issueId: issue.id },
+        children,
       },
-      heading: {
-        type: "PageHeader",
-        props: {
-          title: mine ? "My issues" : "All issues",
-          subtitle: mine
-            ? "Your work, with a little more focus."
-            : "Everything your team is moving forward.",
-          icon: mine ? "i-lucide-circle-user-round" : "i-lucide-layers-2",
-          count: state("/totalCount"),
-        },
-        children: ["create"],
-      },
-      create: {
-        type: "Button",
-        props: { label: "New issue", icon: "i-lucide-plus", variant: "primary" },
-        on: { press: { action: "newIssue", params: {} } },
-      },
-      tabs: {
-        type: "Tabs",
-        props: {
-          value: bind("/tab"),
-          options: [
-            { label: "All issues", value: "all" },
-            { label: "Active", value: "active" },
-            { label: "Completed", value: "done" },
-          ],
-        },
-      },
-      toolbar: {
-        type: "Toolbar",
-        props: {},
-        children: ["search", "status", "priority", "assignee", "clear"],
-      },
-      search: {
-        type: "SearchField",
-        props: { value: bind("/query"), placeholder: "Search issues…" },
-      },
-      status: {
-        type: "SelectField",
-        props: {
-          label: "Status",
-          icon: "i-lucide-circle-dashed",
-          value: bind("/statusFilter"),
-          options: [{ label: "All statuses", value: "" }, ...choices(statuses)],
-        },
-      },
-      priority: {
-        type: "SelectField",
-        props: {
-          label: "Priority",
-          icon: "i-lucide-signal-high",
-          value: bind("/priorityFilter"),
-          options: [{ label: "All priorities", value: "" }, ...choices(priorities)],
-        },
-      },
-      assignee: {
-        type: "SelectField",
-        props: {
-          label: "Assignee",
-          icon: "i-lucide-user-round",
-          value: bind("/assigneeFilter"),
-          options: [
-            { label: "All assignees", value: "" },
-            { label: "Unassigned", value: "unassigned" },
-            ...peopleOptions.slice(1),
-          ],
-        },
-      },
-      clear: {
-        type: "Button",
-        props: { label: "Reset", icon: "i-lucide-rotate-ccw", variant: "ghost" },
-        on: { press: { action: "resetFilters", params: {} } },
-      },
-      summary: {
-        type: "ListSummary",
-        props: { count: state("/filteredCount"), total: state("/totalCount") },
-      },
-      groups: {
-        type: "Stack",
-        props: { variant: "groups" },
-        repeat: { statePath: "/groups", key: "status" },
-        children: ["group"],
-      },
-      group: {
-        type: "IssueGroup",
-        props: { status: item("status"), count: item("count") },
-        visible: { $item: "count", neq: 0 },
-        children: ["rows"],
-      },
-      rows: {
-        type: "Stack",
-        props: { variant: "rows" },
-        repeat: { statePath: item("issues"), key: "id" },
-        children: ["row"],
-      },
-      row: {
-        type: "IssueRow",
-        props: { issue: item("") },
-        on: {
-          open: { action: "openIssue", params: { idPath: item("id") } },
-          select: { action: "toggleSelection", params: { idPath: item("id") } },
-        },
-      },
-      empty: {
-        type: "EmptyState",
-        props: {
-          title: "No issues found",
-          description: "Try a different search or reset your filters to see more work.",
-          icon: "i-lucide-search-x",
-        },
-        visible: { $state: "/filteredCount", eq: 0 },
-        children: ["empty-reset"],
-      },
-      "empty-reset": {
-        type: "Button",
-        props: { label: "Reset filters", variant: "secondary" },
-        on: { press: { action: "resetFilters", params: {} } },
-      },
+      message: { type: "PanelMessage", props: { text: message }, children: [] },
+      status: { type: "WorkflowStatus", props: { status: issue.status }, children: [] },
+      ...(action
+        ? {
+            advance: {
+              type: "WorkflowButton",
+              props: { action, label: workflowActionLabels[action] },
+              children: [],
+              on: {
+                advance: {
+                  action: "workflowAction",
+                  params: { action },
+                },
+              },
+            },
+          }
+        : {}),
     },
   };
+  return validateViewSpec(spec);
 }
 
-const detail: Spec = {
-  root: "detail",
-  elements: {
-    detail: {
-      type: "Stack",
-      props: { variant: "detail" },
-      children: ["back", "identity", "content"],
-    },
+/** Compose the full detail surface around the persona-specific workflow panel. */
+export function getIssueDetailSpec(persona: DemoPersona, issue: Issue): Spec {
+  const panel = getIssuePanelSpec(persona, issue);
+  const elements: Spec["elements"] = {
+    detail: { type: "DetailLayout", props: {}, children: ["back", "heading", "columns"] },
     back: {
-      type: "Button",
-      props: { label: "Back to issues", icon: "i-lucide-arrow-left", variant: "ghost" },
-      on: { press: { action: "openIssue", params: { id: "" } } },
+      type: "DetailBackButton",
+      props: {},
+      children: [],
+      on: { press: { action: "backToIssues", params: {} } },
     },
-    identity: {
-      type: "IssueHeading",
-      props: {
-        id: state("/selectedIssue/id"),
-        title: state("/selectedIssue/title"),
-        labels: state("/selectedIssue/labels"),
-      },
-    },
-    content: { type: "Grid", props: { variant: "detail" }, children: ["body", "properties"] },
-    body: {
-      type: "Stack",
-      props: { variant: "plain" },
-      children: ["description", "activity", "comment-section"],
+    heading: { type: "IssueHeading", props: { issue: { $state: "/selectedIssue" } }, children: [] },
+    columns: {
+      type: "DetailColumns",
+      props: {},
+      children: ["description", "activity", "comment", "readOnly"],
+      slots: { sidebar: ["properties", "workflow"] },
     },
     description: {
-      type: "Section",
-      props: { title: "Description", variant: "description" },
-      children: ["description-text"],
-    },
-    "description-text": {
-      type: "Text",
-      props: { text: state("/selectedIssue/description"), variant: "body" },
+      type: "IssueDescription",
+      props: { description: { $state: "/selectedIssue/description" } },
+      children: [],
     },
     activity: {
-      type: "Section",
-      props: { title: "Activity", variant: "activity" },
-      children: ["events", "no-activity"],
+      type: "IssueActivity",
+      props: {},
+      children: ["activity-rows", "activity-empty"],
     },
-    events: {
-      type: "Stack",
-      props: { variant: "activity" },
+    "activity-rows": {
+      type: "RepeatContainer",
+      props: {},
       repeat: { statePath: "/activities", key: "id" },
-      children: ["event"],
+      children: ["activity-item"],
     },
-    event: { type: "ActivityItem", props: { activity: item("") } },
-    "no-activity": {
-      type: "Text",
-      props: { text: "No activity yet. Start the conversation below.", variant: "caption" },
-      visible: { $state: "/activities/length", eq: 0 },
+    "activity-item": {
+      type: "ActivityItem",
+      props: { activity: { $item: "" }, people: { $state: "/people" } },
+      children: [],
     },
-    "comment-section": {
-      type: "Section",
-      props: { title: "Add a comment", variant: "comment" },
-      children: ["comment", "post"],
+    "activity-empty": {
+      type: "EmptyActivityNotice",
+      props: { text: "No activity yet." },
+      children: [],
+      visible: { $state: "/activities.length", eq: 0 },
     },
     comment: {
-      type: "CommentField",
-      props: { value: bind("/draftComment"), placeholder: "Share an update or ask a question…" },
+      type: "CommentComposer",
+      props: { modelValue: { $bindState: "/draftComment" } },
+      children: [],
+      visible: { $state: "/persona", neq: "guest" },
+      on: { post: { action: "addComment", params: {} } },
     },
-    post: {
-      type: "Button",
-      props: { label: "Post comment", icon: "i-lucide-arrow-up", variant: "primary" },
-      on: { press: { action: "addComment", params: {} } },
+    readOnly: {
+      type: "ReadOnlyNotice",
+      props: { text: "Guest access is read-only. Comments are disabled." },
+      children: [],
+      visible: { $state: "/persona", eq: "guest" },
     },
     properties: {
-      type: "Section",
-      props: { title: "Properties", variant: "properties" },
-      children: ["status", "priority", "assignee", "project"],
+      type: "IssueProperties",
+      props: {},
+      children: [
+        "status-value",
+        "priority-value",
+        "priority-edit",
+        "assignee-value",
+        "assignee-edit",
+        "project-value",
+        "project-edit",
+      ],
     },
-    ...Object.fromEntries(
-      (
-        [
-          ["status", choices(statuses)],
-          ["priority", choices(priorities)],
-          ["assignee", peopleOptions],
-          ["project", projectOptions],
-        ] satisfies [string, { label: string; value: string }[]][]
-      ).map(([field, options]) => [
-        String(field),
-        {
-          type: "PropertyField",
-          props: {
-            label: String(field)[0]!.toUpperCase() + String(field).slice(1),
-            field,
-            value: bind(`/selectedIssue/${field}`),
-            options,
-          },
-          on: {
-            change: {
-              action: "changeProperty",
-              params: { field, value: state(`/selectedIssue/${field}`) },
-            },
-          },
+    "status-value": {
+      type: "PropertyValue",
+      props: {
+        label: "Status",
+        field: "status",
+        value: { $state: "/selectedIssue/status" },
+        options: [],
+      },
+      children: [],
+    },
+    "priority-value": {
+      type: "PropertyValue",
+      props: {
+        label: "Priority",
+        field: "priority",
+        value: { $state: "/selectedIssue/priority" },
+        options: [],
+      },
+      children: [],
+      visible: { $state: "/persona", eq: "guest" },
+    },
+    "priority-edit": {
+      type: "PropertyEditor",
+      props: {
+        label: "Priority",
+        field: "priority",
+        value: { $bindState: "/selectedIssue/priority" },
+        options: [],
+      },
+      children: [],
+      visible: { $state: "/persona", neq: "guest" },
+      on: {
+        change: {
+          action: "changeProperty",
+          params: { field: "priority", value: { $state: "/selectedIssue/priority" } },
         },
-      ]),
-    ),
-  },
-};
-
-const projectView: Spec = {
-  root: "page",
-  elements: {
-    page: {
-      type: "Stack",
-      props: { variant: "page" },
-      children: ["heading", "intro", "cards", "footer"],
+      },
     },
-    heading: {
+    "assignee-value": {
+      type: "PropertyValue",
+      props: {
+        label: "Assignee",
+        field: "assignee",
+        value: { $state: "/selectedIssue/assignee" },
+        options: { $state: "/people" },
+      },
+      children: [],
+      visible: { $state: "/persona", eq: "guest" },
+    },
+    "assignee-edit": {
+      type: "PropertyEditor",
+      props: {
+        label: "Assignee",
+        field: "assignee",
+        value: { $bindState: "/selectedIssue/assignee" },
+        options: { $state: "/people" },
+      },
+      children: [],
+      visible: { $state: "/persona", neq: "guest" },
+      on: {
+        change: {
+          action: "changeProperty",
+          params: { field: "assignee", value: { $state: "/selectedIssue/assignee" } },
+        },
+      },
+    },
+    "project-value": {
+      type: "PropertyValue",
+      props: {
+        label: "Project",
+        field: "project",
+        value: { $state: "/selectedIssue/project" },
+        options: { $state: "/projects" },
+      },
+      children: [],
+      visible: { $state: "/persona", eq: "guest" },
+    },
+    "project-edit": {
+      type: "PropertyEditor",
+      props: {
+        label: "Project",
+        field: "project",
+        value: { $bindState: "/selectedIssue/project" },
+        options: { $state: "/projects" },
+      },
+      children: [],
+      visible: { $state: "/persona", neq: "guest" },
+      on: {
+        change: {
+          action: "changeProperty",
+          params: { field: "project", value: { $state: "/selectedIssue/project" } },
+        },
+      },
+    },
+    workflow: {
+      type: "WorkflowPanel",
+      props: { issueId: issue.id },
+      children: panel.elements.panel!.children,
+    },
+  };
+  for (const [id, element] of Object.entries(panel.elements)) {
+    if (id !== "panel") elements[`workflow-${id}`] = element;
+  }
+  // Prefix child references so workflow identifiers cannot collide with page elements.
+  elements.workflow!.children = (elements.workflow!.children as string[]).map(
+    (id) => `workflow-${id}`,
+  );
+  return validateViewSpec({ root: "detail", elements });
+}
+
+const issueStatuses = [
+  { label: "All statuses", value: "all" },
+  ...statuses.map((status) => ({ label: status, value: status })),
+];
+const issuePriorities = [
+  { label: "All priorities", value: "all" },
+  ...priorities.map((priority) => ({ label: priority, value: priority })),
+];
+const issueAssignees = [
+  { label: "All assignees", value: "all" },
+  { label: "Unassigned", value: "unassigned" },
+  ...people.map((person) => ({ label: person.name, value: person.id })),
+];
+
+function viewSpec(root: string, elements: Spec["elements"]): Spec {
+  return validateViewSpec({ root, elements });
+}
+
+/** A workspace-neutral list composition; live filtered records remain in client state. */
+export function getIssueListSpec(view: "issues" | "my-issues"): Spec {
+  const elements: Spec["elements"] = {
+    page: {
+      type: "PageLayout",
+      props: {},
+      children: ["header", "filters", "summary", "groups", "empty"],
+    },
+    header: {
       type: "PageHeader",
       props: {
-        title: "Projects",
-        subtitle: "The bigger picture, one milestone at a time.",
-        icon: "i-lucide-box",
-        count: projects.length,
+        view,
+        count: { $state: "/totalCount" },
+        projectFilter: { $state: "/projectFilter" },
+        projects: { $state: "/projects" },
       },
-      children: ["issues"],
+      children: ["new-issue"],
     },
-    issues: {
-      type: "Button",
-      props: { label: "View all issues", icon: "i-lucide-arrow-up-right", variant: "secondary" },
-      on: { press: { action: "navigate", params: { view: "issues" } } },
+    "new-issue": {
+      type: "NewIssueButton",
+      props: {},
+      children: [],
+      visible: { $state: "/persona", neq: "guest" },
+      on: { press: { action: "openNewIssue", params: {} } },
     },
-    intro: { type: "Text", props: { text: "WORKSPACE INITIATIVES", variant: "eyebrow" } },
-    cards: {
-      type: "Grid",
-      props: { variant: "projects" },
+    filters: {
+      type: "IssueFilters",
+      props: {
+        query: { $bindState: "/query" },
+        statusFilter: { $bindState: "/statusFilter" },
+        priorityFilter: { $bindState: "/priorityFilter" },
+        assigneeFilter: { $bindState: "/assigneeFilter" },
+        tab: { $bindState: "/tab" },
+        statuses: issueStatuses,
+        priorities: issuePriorities,
+        assignees: issueAssignees,
+      },
+      children: [],
+      on: { reset: { action: "resetFilters", params: {} } },
+    },
+    summary: {
+      type: "IssueListSummary",
+      props: {
+        filteredCount: { $state: "/filteredCount" },
+        totalCount: { $state: "/totalCount" },
+        selectedIds: { $state: "/selectedIds" },
+      },
+      children: [],
+    },
+    groups: {
+      type: "RepeatContainer",
+      props: {},
+      repeat: { statePath: "/groups", key: "status" },
+      children: ["group"],
+    },
+    group: {
+      type: "IssueGroup",
+      props: { status: { $item: "status" }, count: { $item: "count" } },
+      visible: { $item: "count", gt: 0 },
+      children: ["rows"],
+    },
+    rows: {
+      type: "RepeatContainer",
+      props: {},
+      repeat: { statePath: { $item: "issues" }, key: "id" },
+      children: ["row"],
+    },
+    row: {
+      type: "IssueRow",
+      props: {
+        issue: { $item: "" },
+        people: { $state: "/people" },
+        projects: { $state: "/projects" },
+        selectedIds: { $state: "/selectedIds" },
+      },
+      children: [],
+      on: {
+        open: { action: "openIssue", params: { issueId: { $item: "id" } } },
+        toggle: { action: "toggleIssueSelection", params: { issueId: { $item: "id" } } },
+      },
+    },
+    empty: {
+      type: "EmptyIssueState",
+      props: {},
+      children: [],
+      visible: { $state: "/filteredCount", eq: 0 },
+      on: { reset: { action: "resetFilters", params: {} } },
+    },
+  };
+  return viewSpec("page", elements);
+}
+
+/** A workspace-neutral project composition; project records stay in client state. */
+export function getProjectsSpec(): Spec {
+  const elements: Spec["elements"] = {
+    page: {
+      type: "PageLayout",
+      props: {},
+      children: ["header", "eyebrow", "grid", "empty", "caption"],
+    },
+    header: {
+      type: "PageHeader",
+      props: {
+        view: "projects",
+        count: { $state: "/projects.length" },
+        projectFilter: "",
+        projects: { $state: "/projects" },
+      },
+      children: ["view-issues"],
+    },
+    "view-issues": {
+      type: "PageActionButton",
+      props: { label: "View all issues", icon: "i-lucide-arrow-up-right" },
+      children: [],
+      on: { press: { action: "navigateToIssues", params: {} } },
+    },
+    eyebrow: {
+      type: "ProjectIntro",
+      props: { text: "WORKSPACE INITIATIVES" },
+      children: [],
+    },
+    grid: {
+      type: "ProjectGrid",
+      props: {},
       repeat: { statePath: "/projects", key: "id" },
-      children: ["card"],
+      children: ["project-card"],
     },
-    card: {
+    "project-card": {
       type: "ProjectCard",
-      props: { project: item("") },
-      children: ["progress"],
-      on: { open: { action: "navigate", params: { view: "issues", projectPath: item("id") } } },
+      props: { project: { $item: "" }, people: { $state: "/people" } },
+      children: [],
+      on: { open: { action: "openProject", params: { projectId: { $item: "id" } } } },
     },
-    progress: {
-      type: "ProgressIndicator",
-      props: { value: item("progress"), label: "Milestone progress" },
+    empty: {
+      type: "EmptyProjectNotice",
+      props: { text: "No projects are available to this demo persona." },
+      children: [],
+      visible: { $state: "/projects.length", eq: 0 },
     },
-    footer: {
-      type: "Text",
+    caption: {
+      type: "PageCaption",
       props: {
         text: "Select a project to explore its issues. Progress reflects the current project milestone.",
-        variant: "caption",
       },
+      children: [],
     },
-  },
-};
-
-export const viewSpecs: Record<string, Spec> = {
-  "my-issues": issuesView(true),
-  "all-issues": issuesView(false),
-  projects: projectView,
-  "issue-detail": detail,
-};
-
-// Validate the same allowlist that the client registry implements before serving.
-export function getViewSpec(view: string): Spec | undefined {
-  const spec = viewSpecs[view];
-  if (!spec) return undefined;
-  const normalized = {
-    ...spec,
-    elements: Object.fromEntries(
-      Object.entries(spec.elements).map(([id, element]) => [
-        id,
-        { ...element, children: element.children ?? [] },
-      ]),
-    ),
   };
-  return validateViewSpec(normalized);
+  return viewSpec("page", elements);
 }

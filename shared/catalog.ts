@@ -1,8 +1,9 @@
 import { defineCatalog } from "@json-render/core";
 import { schema } from "@json-render/vue/schema";
 import { z } from "zod";
-import { statuses, priorities } from "./types";
+import { priorities, statuses } from "./types";
 
+export const workflowActions = ["start-work", "request-review", "approve"] as const;
 const option = z.object({ label: z.string(), value: z.string() });
 const issue = z.object({
   id: z.string(),
@@ -14,6 +15,20 @@ const issue = z.object({
   project: z.string(),
   labels: z.array(z.string()),
   createdAt: z.string(),
+});
+const activity = z.object({
+  id: z.string(),
+  issueId: z.string(),
+  author: z.string(),
+  text: z.string(),
+  createdAt: z.string(),
+  type: z.enum(["comment", "change"]),
+});
+const person = z.object({
+  id: z.string(),
+  name: z.string(),
+  initials: z.string(),
+  color: z.string(),
 });
 const project = z.object({
   id: z.string(),
@@ -29,158 +44,210 @@ const project = z.object({
   issueCount: z.number(),
 });
 
-/** Shared allowlist and prop contracts for authored server-driven screens. */
+/** Allowlisted atomic building blocks and actions for all server-composed views. */
 export const catalog = defineCatalog(schema, {
   components: {
-    Stack: {
-      props: z.object({
-        variant: z.enum(["page", "groups", "rows", "detail", "activity", "plain"]).optional(),
-      }),
+    PageLayout: {
+      props: z.object({}),
       slots: ["default"],
-      description: "Vertical layout with a consistent density",
-    },
-    Grid: {
-      props: z.object({ variant: z.enum(["projects", "detail"]) }),
-      slots: ["default"],
-      description: "Responsive grid",
-    },
-    Section: {
-      props: z.object({ title: z.string().optional(), variant: z.string().optional() }),
-      slots: ["default"],
-      description: "A semantic content section",
+      description: "Shared main view page frame",
     },
     PageHeader: {
       props: z.object({
-        title: z.string(),
-        subtitle: z.string(),
-        icon: z.string(),
-        count: z.number().optional(),
+        view: z.string(),
+        count: z.number(),
+        projectFilter: z.string(),
+        projects: z.array(project.passthrough()),
       }),
       slots: ["default"],
-      description: "View heading with trailing actions",
+      description: "Issue or project page title, subtitle, and action slot",
     },
-    Toolbar: {
-      props: z.object({}),
-      slots: ["default"],
-      description: "Wrapping filter and search toolbar",
-    },
-    Text: {
-      props: z.object({
-        text: z.string(),
-        variant: z.enum(["body", "title", "caption", "eyebrow"]).optional(),
-      }),
-      description: "Readable text",
-    },
-    Button: {
-      props: z.object({
-        label: z.string(),
-        icon: z.string().optional(),
-        variant: z.enum(["primary", "secondary", "ghost"]).optional(),
-      }),
+    PageActionButton: {
+      props: z.object({ label: z.string(), icon: z.string(), primary: z.boolean().optional() }),
       events: ["press"],
-      description: "Action button",
+      description: "A page-level action button",
     },
-    SearchField: {
-      props: z.object({ value: z.string(), placeholder: z.string() }),
-      description: "Two-way bound search input",
+    NewIssueButton: {
+      props: z.object({}),
+      events: ["press"],
+      description: "Open the existing lazy new-issue dialog",
     },
-    SelectField: {
+    IssueFilters: {
       props: z.object({
-        value: z.string(),
-        label: z.string(),
-        options: z.array(option),
-        icon: z.string().optional(),
+        query: z.string(),
+        statusFilter: z.string(),
+        priorityFilter: z.string(),
+        assigneeFilter: z.string(),
+        tab: z.string(),
+        statuses: z.array(option),
+        priorities: z.array(option),
+        assignees: z.array(option),
       }),
-      description: "Two-way bound filter",
+      events: ["reset"],
+      description: "Bound issue query, status, priority, assignee and scope controls",
     },
-    Tabs: {
-      props: z.object({ value: z.string(), options: z.array(option) }),
-      description: "Bound view segments",
+    IssueListSummary: {
+      props: z.object({
+        filteredCount: z.number(),
+        totalCount: z.number(),
+        selectedIds: z.array(z.string()),
+      }),
+      description: "Filtered, total and selected issue counts",
     },
     IssueGroup: {
       props: z.object({ status: z.enum(statuses), count: z.number() }),
       slots: ["default"],
-      description: "Status group, with item repetition authored in the Spec",
+      description: "One status group containing repeated issue rows",
+    },
+    RepeatContainer: {
+      props: z.object({}),
+      slots: ["default"],
+      description: "Semantic-neutral container for repeated catalog children",
     },
     IssueRow: {
-      props: z.object({ issue }),
-      events: ["open", "select"],
-      description: "Dense issue row with priority, project and assignee",
+      props: z.object({
+        issue,
+        people: z.array(person),
+        projects: z.array(project.passthrough()),
+        selectedIds: z.array(z.string()),
+      }),
+      events: ["open", "toggle"],
+      description: "One keyboard-accessible issue row",
     },
-    ListSummary: {
-      props: z.object({ count: z.number(), total: z.number() }),
-      description: "Result and selection count",
+    EmptyIssueState: {
+      props: z.object({}),
+      events: ["reset"],
+      description: "No matching issues message and filter reset control",
     },
-    EmptyState: {
-      props: z.object({ title: z.string(), description: z.string(), icon: z.string() }),
+    ProjectIntro: {
+      props: z.object({ text: z.string() }),
+      description: "Projects section eyebrow",
+    },
+    ProjectGrid: {
+      props: z.object({}),
       slots: ["default"],
-      description: "Recoverable empty state",
-    },
-    IssueHeading: {
-      props: z.object({ id: z.string(), title: z.string(), labels: z.array(z.string()) }),
-      description: "Issue identity and title",
-    },
-    PropertyField: {
-      props: z.object({
-        label: z.string(),
-        field: z.enum(["status", "priority", "assignee", "project"]),
-        value: z.string(),
-        options: z.array(option),
-      }),
-      events: ["change"],
-      description: "Editable issue property; dispatches the Spec action after binding changes",
-    },
-    ActivityItem: {
-      props: z.object({
-        activity: z.object({
-          id: z.string(),
-          issueId: z.string(),
-          author: z.string(),
-          text: z.string(),
-          createdAt: z.string(),
-          type: z.enum(["comment", "change"]),
-        }),
-      }),
-      description: "A comment or property-change event",
-    },
-    CommentField: {
-      props: z.object({ value: z.string(), placeholder: z.string() }),
-      description: "Bound comment draft",
+      description: "Responsive grid for repeated project cards",
     },
     ProjectCard: {
-      props: z.object({ project }),
+      props: z.object({ project, people: z.array(person) }),
       events: ["open"],
-      slots: ["default"],
-      description: "Project overview, owner and milestone",
+      description: "One project overview card with issue navigation",
     },
-    ProgressIndicator: {
-      props: z.object({ value: z.number(), label: z.string() }),
-      description: "Accessible completion indicator",
+    EmptyProjectNotice: {
+      props: z.object({ text: z.string() }),
+      description: "Empty projects notice",
+    },
+    PageCaption: {
+      props: z.object({ text: z.string() }),
+      description: "Supporting page caption",
+    },
+    DetailLayout: {
+      props: z.object({}),
+      slots: ["default"],
+      description: "Issue detail page frame",
+    },
+    DetailColumns: {
+      props: z.object({}),
+      slots: ["default", "sidebar"],
+      description: "Main activity column and properties sidebar",
+    },
+    DetailBackButton: {
+      props: z.object({}),
+      events: ["press"],
+      description: "Return to issue list",
+    },
+    IssueHeading: { props: z.object({ issue }), description: "Issue identity, title and labels" },
+    IssueDescription: {
+      props: z.object({ description: z.string() }),
+      description: "Issue description section",
+    },
+    IssueActivity: {
+      props: z.object({}),
+      slots: ["default"],
+      description: "Activity section containing individually repeated activity items",
+    },
+    ActivityItem: {
+      props: z.object({ activity, people: z.array(person) }),
+      description: "One activity or comment row",
+    },
+    EmptyActivityNotice: {
+      props: z.object({ text: z.string() }),
+      description: "Notice shown when no activity exists",
+    },
+    CommentComposer: {
+      props: z.object({ modelValue: z.string() }),
+      events: ["post"],
+      description: "Bound draft comment and posting control",
+    },
+    ReadOnlyNotice: {
+      props: z.object({ text: z.string() }),
+      description: "Read-only access notice",
+    },
+    IssueProperties: {
+      props: z.object({}),
+      slots: ["default"],
+      description: "Issue properties section",
+    },
+    PropertyValue: {
+      props: z.object({
+        label: z.string(),
+        value: z.string(),
+        field: z.enum(["status", "priority", "assignee", "project"]),
+        options: z.array(z.object({ id: z.string(), name: z.string() }).passthrough()),
+      }),
+      description: "Read-only property row",
+    },
+    PropertyEditor: {
+      props: z.object({
+        label: z.string(),
+        field: z.enum(["priority", "assignee", "project"]),
+        value: z.string(),
+        options: z.array(z.object({ id: z.string(), name: z.string() }).passthrough()),
+      }),
+      events: ["change"],
+      description: "Bound editable issue property selector",
+    },
+    WorkflowPanel: {
+      props: z.object({ issueId: z.string() }),
+      slots: ["default"],
+      description: "Container for the current issue's workflow guidance and available action",
+    },
+    PanelMessage: {
+      props: z.object({ text: z.string() }),
+      description: "Workflow state explanation",
+    },
+    WorkflowStatus: {
+      props: z.object({ status: z.enum(statuses) }),
+      description: "Current workflow status",
+    },
+    WorkflowButton: {
+      props: z.object({ action: z.enum(workflowActions), label: z.string() }),
+      events: ["advance"],
+      description: "A server-authorized workflow action",
     },
   },
   actions: {
-    openIssue: {
-      params: z.object({ id: z.string().optional(), idPath: z.string().optional() }),
-      description: "Open or close an issue using a literal ID or repeat-item pointer",
+    navigateToIssues: { params: z.object({}), description: "Show the issues list" },
+    openNewIssue: { params: z.object({}), description: "Open the new-issue dialog" },
+    resetFilters: { params: z.object({}), description: "Clear issue filters and selection" },
+    openIssue: { params: z.object({ issueId: z.string() }), description: "Open an issue" },
+    toggleIssueSelection: {
+      params: z.object({ issueId: z.string() }),
+      description: "Toggle an issue's selected state",
     },
-    toggleSelection: {
-      params: z.object({ idPath: z.string() }),
-      description: "Toggle an issue selection",
+    openProject: {
+      params: z.object({ projectId: z.string() }),
+      description: "Show a project's issues",
     },
-    newIssue: { params: z.object({}), description: "Open the issue composer" },
-    resetFilters: { params: z.object({}), description: "Clear all filters" },
-    navigate: {
-      params: z.object({
-        view: z.string(),
-        project: z.string().optional(),
-        projectPath: z.string().optional(),
-      }),
-      description: "Navigate to a view or project scope",
-    },
+    backToIssues: { params: z.object({}), description: "Close the current issue detail" },
+    addComment: { params: z.object({}), description: "Post the bound issue comment draft" },
     changeProperty: {
-      params: z.object({ field: z.string(), value: z.string() }),
-      description: "Update a property and append history",
+      params: z.object({ field: z.enum(["priority", "assignee", "project"]), value: z.string() }),
+      description: "Validate and save an issue property change",
     },
-    addComment: { params: z.object({}), description: "Post the bound draft comment" },
+    workflowAction: {
+      params: z.object({ action: z.enum(workflowActions) }),
+      description: "Request a server-validated workflow transition",
+    },
   },
 });
