@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ActionProvider, Renderer, StateProvider, VisibilityProvider } from "@json-render/vue";
-import type { Spec } from "@json-render/core";
 import { validateViewSpec } from "../shared/validate-view";
 import { createTrackerRegistry } from "./utils/registry";
+import { createSpecCache, type SpecEntry, type SpecMetadata } from "./utils/spec-cache";
+import { guardSpecPersona, specPersonaMismatch } from "./utils/spec-persona";
 
+const nuxtApp = useNuxtApp();
 const tracker = useTracker();
 function resolveRepeatActionValue(value: string) {
   const resolved = value.startsWith("/") ? tracker.store.get(value) : value;
@@ -34,16 +36,37 @@ const actionHandlers = handlers(
   () => tracker.store.getSnapshot(),
 );
 
-const inspectOpen = ref(false);
-const viewSpec = shallowRef<Spec | null>(null);
-const viewOverride = shallowRef<Spec | null>(null);
-let viewRequestGeneration = 0;
-const viewError = ref(false);
-const viewLoading = ref(false);
+const activeEntry = shallowRef<SpecEntry | null>(null);
+let refreshInspector = () => {};
+let disposeInspector = () => {};
+let scopeDisposed = false;
+onScopeDispose(() => {
+  scopeDisposed = true;
+  disposeInspector();
+});
+const specCache = createSpecCache({
+  onChange: () => {
+    triggerRef(activeEntry);
+    refreshInspector();
+    for (const listener of specCacheListeners) listener();
+  },
+});
+const specCacheListeners = new Set<() => void>();
+const devtoolsBridgeKey = "__JSON_RENDER_SPEC_CACHE__" as const;
+type SpecCacheBridge = {
+  entries: () => SpecEntry[];
+  current: () => string | null;
+  subscribe: (listener: () => void) => () => void;
+  apply: typeof applyDraft;
+  refetch: (identity: string) => Promise<void>;
+  clear: (identity: string) => void;
+  invalidate: (identity: string) => Promise<void>;
+};
 const viewRetry = ref(0);
 const renderError = ref(false);
-const hasOverride = computed(() => viewOverride.value !== null);
-const activeSpec = computed(() => viewOverride.value ?? viewSpec.value);
+const activeSpec = computed(() => activeEntry.value?.override ?? activeEntry.value?.latest ?? null);
+const viewLoading = computed(() => activeEntry.value?.loading ?? false);
+const viewError = computed(() => !activeSpec.value && !!activeEntry.value?.error);
 const issueComposerLoaded = ref(false);
 const viewKey = computed(() => {
   const state = tracker.state.value;
@@ -54,7 +77,6 @@ const viewKey = computed(() => {
     state.view,
     issue ? "issue-detail" : "list",
     issue?.id ?? "",
-    issue?.status ?? "",
   ].join(":");
 });
 const viewName = computed(() => {
@@ -69,59 +91,112 @@ const viewName = computed(() => {
   }
 });
 const isDetailView = computed(() => !!tracker.state.value.selectedIssue);
-const viewErrorMessage = computed(() => `The ${viewName.value} view could not be loaded.`);
-watch(isDetailView, (isDetail) => {
-  if (!isDetail) inspectOpen.value = false;
-});
-
+const viewErrorMessage = computed(
+  () =>
+    `The ${viewName.value} view could not be loaded: ${activeEntry.value?.error ?? "unknown error"}`,
+);
+async function fetchSpec(metadata: SpecMetadata) {
+  const mismatch = specPersonaMismatch(metadata.persona, tracker.state.value.persona);
+  if (mismatch) throw new Error(mismatch);
+  const input = await $fetch<unknown>(`/api/views/${metadata.view}`, {
+    query: metadata.issue
+      ? { workspace: metadata.workspace, issue: metadata.issue }
+      : { workspace: metadata.workspace },
+    retry: 0,
+  });
+  return validateViewSpec(input);
+}
+let seenRetry = 0;
 watch(
-  () => [viewKey.value, viewRetry.value],
-  async ([key]) => {
-    const requestGeneration = ++viewRequestGeneration;
-    const isCurrentRequest = () =>
-      requestGeneration === viewRequestGeneration && viewKey.value === key;
-    viewSpec.value = null;
-    viewOverride.value = null;
-    viewError.value = false;
+  () => [viewKey.value, viewRetry.value, tracker.state.value.selectedIssue?.status] as const,
+  async ([identity, retryCount]) => {
+    const force = retryCount > seenRetry;
+    seenRetry = retryCount;
     renderError.value = false;
-    const keyAtStart = tracker.state.value;
-    const issue = keyAtStart.selectedIssue;
-    const view = issue ? "issue-detail" : keyAtStart.view;
-    if (!issue && !["issues", "my-issues", "projects"].includes(view)) {
-      viewError.value = true;
-      viewLoading.value = false;
-      return;
-    }
-    viewLoading.value = true;
-    try {
-      const input = await $fetch<unknown>(`/api/views/${view}`, {
-        query: issue
-          ? { workspace: keyAtStart.workspaceId, issue: issue.id }
-          : { workspace: keyAtStart.workspaceId },
-        retry: 0,
-      });
-      if (isCurrentRequest()) viewSpec.value = validateViewSpec(input);
-    } catch {
-      if (isCurrentRequest()) viewError.value = true;
-    } finally {
-      if (isCurrentRequest()) viewLoading.value = false;
-    }
+    const state = tracker.state.value;
+    const issue = state.selectedIssue;
+    const metadata: SpecMetadata = {
+      workspace: state.workspaceId,
+      persona: state.persona,
+      view: issue ? "issue-detail" : state.view,
+      ...(issue ? { issue: issue.id, status: issue.status } : {}),
+    };
+    const identityKey = String(identity);
+    activeEntry.value = specCache.get(identityKey, metadata);
+    await specCache.select(identityKey, metadata, fetchSpec, force);
   },
   { flush: "sync", immediate: true },
 );
-
-function applySpec(spec: Spec) {
-  viewOverride.value = spec;
+function rejectInactivePersona(identity: string) {
+  const entry = specCache.entries.get(identity);
+  if (!entry) return false;
+  return guardSpecPersona(entry.metadata.persona, tracker.state.value.persona, (message) =>
+    specCache.reportError(identity, message),
+  );
+}
+async function refetchSpec(identity = specCache.current?.identity) {
+  if (identity && !rejectInactivePersona(identity)) await specCache.refetch(identity, fetchSpec);
+}
+async function invalidateSpec(identity = specCache.current?.identity) {
+  if (identity && !rejectInactivePersona(identity)) await specCache.invalidate(identity, fetchSpec);
+}
+function applyDraft(identity: string, input: string) {
+  try {
+    const entry = specCache.entries.get(identity);
+    if (!entry) return { ok: false, message: "No cached Spec is selected." };
+    const spec = validateViewSpec(JSON.parse(input));
+    specCache.apply(identity, spec);
+    renderError.value = false;
+    return { ok: true, message: "Override applied to the Renderer. Server Spec unchanged." };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : String(error) };
+  }
+}
+function restoreSpec(identity = specCache.current?.identity) {
+  if (identity) specCache.clear(identity);
   renderError.value = false;
 }
-function restoreSpec() {
-  viewOverride.value = null;
-  renderError.value = false;
-}
-async function closeInspector() {
-  inspectOpen.value = false;
-  await nextTick();
-  document.querySelector<HTMLButtonElement>('button[aria-label="Inspect UI"]')?.focus();
+if (import.meta.dev && import.meta.client) {
+  const host = window as Window & { __JSON_RENDER_SPEC_CACHE__?: SpecCacheBridge };
+  const bridge: SpecCacheBridge = {
+    entries: () => [...specCache.entries.values()],
+    current: () => specCache.current?.identity ?? null,
+    subscribe: (listener) => {
+      specCacheListeners.add(listener);
+      return () => specCacheListeners.delete(listener);
+    },
+    apply: applyDraft,
+    refetch: refetchSpec,
+    clear: restoreSpec,
+    invalidate: invalidateSpec,
+  };
+  host[devtoolsBridgeKey] = bridge;
+  onScopeDispose(() => {
+    if (host[devtoolsBridgeKey] === bridge) delete host[devtoolsBridgeKey];
+    specCacheListeners.clear();
+  });
+  void Promise.all([import("@vue/devtools-api"), import("./utils/spec-devtools")]).then(
+    ([devtools, bridge]) => {
+      if (scopeDisposed) return;
+      disposeInspector = bridge.setupSpecInspectorPlugin(
+        devtools.setupDevToolsPlugin,
+        specCache,
+        () => specCache.current?.identity ?? null,
+        {
+          apply: applyDraft,
+          refetch: refetchSpec,
+          clear: restoreSpec,
+          invalidate: invalidateSpec,
+        },
+        nuxtApp.vueApp,
+        (inspector) => {
+          refreshInspector = inspector.refresh;
+          refreshInspector();
+        },
+        () => scopeDisposed,
+      );
+    },
+  );
 }
 function retryView() {
   viewRetry.value += 1;
@@ -143,8 +218,8 @@ const notice = computed(() => tracker.state.value.notice);
 <template>
   <UApp>
     <NuxtRouteAnnouncer />
-    <AppShell :inspect-open="inspectOpen" @inspect="inspectOpen = !inspectOpen">
-      <div class="view-workbench" :class="{ inspecting: inspectOpen }">
+    <AppShell>
+      <div class="view-workbench">
         <div class="view-preview">
           <StateProvider :store="tracker.store">
             <ActionProvider :handlers="actionHandlers">
@@ -166,7 +241,7 @@ const notice = computed(() => tracker.state.value.notice);
                   />
                 </div>
               </div>
-              <div v-else-if="viewLoading || !activeSpec" class="view-loading" role="status">
+              <div v-else-if="!activeSpec && viewLoading" class="view-loading" role="status">
                 <USkeleton class="h-24 w-full" />
                 <span class="sr-only">Loading {{ viewName }} view…</span>
               </div>
@@ -176,7 +251,7 @@ const notice = computed(() => tracker.state.value.notice);
                   label="Restore server Spec"
                   color="neutral"
                   variant="outline"
-                  @click="restoreSpec"
+                  @click="restoreSpec()"
                 />
               </div>
               <RendererErrorBoundary v-else @error="handleViewRenderError">
@@ -187,17 +262,6 @@ const notice = computed(() => tracker.state.value.notice);
             </ActionProvider>
           </StateProvider>
         </div>
-        <LazySpecInspector
-          v-if="inspectOpen && isDetailView"
-          id="ui-spec-inspector"
-          :spec="activeSpec"
-          view-name="issue detail"
-          :modified="hasOverride"
-          :loading="viewLoading"
-          @apply="applySpec"
-          @reset="restoreSpec"
-          @close="closeInspector"
-        />
       </div>
       <div v-if="notice" class="workspace-notice" role="status">
         <UIcon name="i-lucide-info" />

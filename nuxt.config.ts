@@ -3,7 +3,7 @@ export default defineNuxtConfig({
   compatibilityDate: "2025-07-15",
   devtools: { enabled: true },
   ssr: false,
-  modules: ["@nuxt/ui"],
+  modules: ["@nuxt/ui", "./modules/spec-cache-devtools"],
   css: ["~/assets/css/main.css"],
   vite: {
     // Nitro needs the server entry's exports; only split the client build here.

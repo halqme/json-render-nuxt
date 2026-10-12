@@ -37,7 +37,7 @@ Nuxtは外部の`vite.config.ts`に警告を出しますが、このファイル
 | Registry        | `app/utils/registry.ts`                              | Catalog部品をVue実装へ結び、Spec actionをtracker handlerへ接続                                              |
 | UI Spec         | `server/utils/view-specs.ts`                         | `getIssueListSpec`・`getProjectsSpec`・`getIssueDetailSpec`で各画面の順序・repeat・visibility・eventsを構成 |
 | Views API       | `server/api/views/[view].get.ts`                     | `issues`・`my-issues`・`projects`・読取可能なIssueの`issue-detail` Specを返す                               |
-| Renderer host   | `app/app.vue`                                        | 現在のview Specを取得・検証・描画し、stale request・エラー・再試行・詳細Inspectorを処理                     |
+| Renderer host   | `app/app.vue`                                        | 全viewのSpec取得・検証・描画、キー別キャッシュ、stale request保護とエラー処理を担当                         |
 | Mock records    | `shared/mock-data.ts`                                | 22件のIssue、4プロジェクト、5人の担当者、コメント・変更履歴の初期データ                                     |
 | State / Actions | `app/composables/useTracker.ts`                      | Persona Cookieに沿うフィルター済み状態、検索、URL、API呼び出しと保存結果の反映                              |
 | Records API     | `server/api/workspaces/` / `server/utils/records.ts` | ワークスペース別の取得・保存、入力検証、Workflow遷移、変更履歴の生成                                        |
@@ -48,9 +48,9 @@ Nuxtは外部の`vite.config.ts`に警告を出しますが、このファイル
 
 ## コードとチャンクの分割
 
-json-renderのRegistryはPage layout/header、filter toolbar、status group、個別Issue row、project card、個別Activity row、detail section、comment composer、property fields、workflow panelなどを登録します。サーバーSpecが構成・順序・repeat・Guest向けread-only表示と編集UIのvisibilityを宣言します。Inspect UIでSpecを編集してもCatalogにない部品・Actionは使えません。Inspect UIは表示・Actionのプレビューであり、サーバーの認可や入力検証を迂回できません。
+json-renderのRegistryはPage layout/header、filter toolbar、status group、個別Issue row、project card、個別Activity row、detail section、comment composer、property fields、workflow panelなどを登録します。サーバーSpecが構成・順序・repeat・Guest向けread-only表示と編集UIのvisibilityを宣言します。Vue DevToolsのSpec Cache InspectorでSpecを編集してもCatalogにない部品・Actionは使えません。Overrideはクライアント描画だけに適用され、サーバーの認可や入力検証を迂回できません。
 
-`nuxt.config.ts`の`vite.$client`でVueランタイム、Nuxt UI関連、json-render / Zodの依存チャンクを分離します。サーバービルドのentryは変更しません。Inspect UIと新規Issue作成のコンポーネントJS・CSSは初回に開いたときに読み込み、新規作成モーダルは以後マウントを維持して閉じるアニメーションを完了させます。共通依存は初回から必要なため、この分割は総転送量の削減を保証するものではありません。
+`nuxt.config.ts`の`vite.$client`でVueランタイム、Nuxt UI関連、json-render / Zodの依存チャンクを分離します。サーバービルドのentryは変更しません。新規Issue作成のコンポーネントJS・CSSは初回に開いたときに読み込み、新規作成モーダルは以後マウントを維持して閉じるアニメーションを完了させます。共通依存は初回から必要なため、この分割は総転送量の削減を保証するものではありません。
 
 `tests/browser/bundle.spec.ts`で本番JSの500kB上限と機能コードの遅延読み込み・再利用を検証します。
 
@@ -74,7 +74,7 @@ GET issue-detail Spec → validateViewSpec → Renderer ← selected issue / act
        declared navigation, filter, comment/property/workflow actions → tracker handlers / authorized APIs
 ```
 
-json-render 0.21.0のVueスキーマの検証結果には`on`が含まれないため、検証後も元のSpecをRendererへ渡します。全view Specは`validateViewSpec`でCatalog・構造・repeat・Action allowlistを検証します。InspectorはIssue detail Specのみ編集できます。[公式Vue API](https://json-render.dev/docs/api/vue)とインストール済みの型・実装を確認しています。
+json-render 0.21.0のVueスキーマの検証結果には`on`が含まれないため、検証後も元のSpecをRendererへ渡します。全view Specは`validateViewSpec`でCatalog・構造・repeat・Action allowlistを検証します。Vue DevToolsのカスタムInspectorは全viewの取得履歴・キャッシュ・metadata・要素ツリーを表示します。
 
 ## 操作と保存
 
@@ -124,13 +124,13 @@ localStorageには選択ワークスペースの設定`orbit:active-workspace`�
 
 トップバーの太陽・月アイコンでライト／ダークを切り替えます。初期設定はダークで、選択はNuxt Color Modeがブラウザに保存し、再読み込み後も維持します。切り替えにリロードは不要で、フィルターや適用済みのUI Specは保持されます。
 
-配色は`app/assets/css/theme.css`の意味別トークンに集約しています。シェル、Registry、検索・新規作成ダイアログ、Inspect UI、およびNuxt UIの背景・文字・枠線が同じトークンを参照します。配色を調整する際はライト用の`:root`とダーク用の`:root.dark`を更新してください。テーマはクライアント設定であり、サーバーのSpecは変更しません。
+配色は`app/assets/css/theme.css`の意味別トークンに集約しています。シェル、Registry、検索・新規作成ダイアログ、およびNuxt UIの背景・文字・枠線が同じトークンを参照します。配色を調整する際はライト用の`:root`とダーク用の`:root.dark`を更新してください。テーマはクライアント設定であり、サーバーのSpecは変更しません。
 
-## Inspect UI
+## Nuxt DevTools Spec Cache
 
-Issue詳細を開いたときだけトップバーに現れるコードアイコン（Inspect UI）から、完全なIssue detail SpecをJSONで確認・編集できます。`Apply`または`⌘ / Ctrl + Enter`で構造・Catalog・Action名を検証し、リロードなしでRendererへ反映します。Issue一覧・My issues・ProjectsのSpecはInspectorの対象外です。無効なJSONやSpecはエラーを表示し、表示中のSpecは変更しません。
+開発サーバーでNuxt DevToolsを開き（`Shift` + `Option` + `D`）、サイドバーのVue DevToolsカテゴリから`Spec Cache`タブを選びます。タブは開発時だけ登録・配信され、アプリが所有する単一のSpec cacheを同一オリジンのiframe UIから参照します。workspace/persona/view/issue identityごとに最新の検証済みserver Spec、client override、effective Spec、metadata、取得開始・成功・失敗・stale応答・cache hit（最大40件）の履歴を確認できます。JSON draftの`Apply draft`は選択したidentityのRenderer Spec overrideを設定し、サーバーへ書き込みません。現在表示中のidentityを選んだ場合は直ちにRendererへ反映され、別identityのoverrideはそのidentityがアプリで表示された際に使われます。`Refetch`はoverrideを保持し、`Clear override`は最新server Specへ戻します。`Invalidate & refetch`はcacheを無効化して再取得します。
 
-適用済みの編集は`app/app.vue`のメモリに保持されます。`Restore server spec`で元のSpecに戻し、未適用の入力も破棄できます。Issue / Persona / Workflow状態が変わると、サーバーからSpecを取り直し一時上書きを破棄します。上書きはlocalStorageにもサーバーにも保存せず、ページの再読み込みで消えます。SpecのActionをクライアントで改変しても、対象Issue・現在Status・選択Personaはサーバーで再検証します。
+Overrideはidentityごとにメモリ保持され、同じIssueのWorkflow状態変更や再取得では保持されます。未適用draftはタブ内でidentityごとに分離されます。OverrideはlocalStorageにもサーバーにも保存せず、ページの再読み込みで消えます。SpecのActionをクライアントで改変しても、対象Issue・現在Status・選択Personaはサーバーで再検証します。
 
 ## 動的配信への拡張
 
@@ -138,4 +138,4 @@ Issue詳細を開いたときだけトップバーに現れるコードアイコ
 2. 複数ユーザー運用に転用する前に実認証・セッション保護・CSRF対策・サーバー側の信頼できるIdentityを導入します。このPoCのCookie値を本番の権限根拠にしてはいけません。
 3. 複数プロセスや利用者に拡張する場合は`server/utils/records.ts`のファイル保存をDB / トランザクションへ置き換え、同じサーバーpolicyをサービス層で維持します。
 
-ブラウザテストでは、サーバーSpecによるIssue一覧・Projects・詳細構成、repeat rows/cards/activity、Persona / Issue状態ごとのvisibility、クライアント限定Inspect編集、stale request保護とWorkflow再取得を検証します。APIテストではGuestの読取範囲と、直接Issue・Project・コメント・Status・承認APIを呼ぶ権限迂回を検証します。レコードAPIの入力検証・ファイルへの保存・ワークスペース分離・サーバー再起動後の保持・破損ファイルの保護と、画面での保存失敗時の入力保持も検証しています。
+テストでは、サーバーSpecによるIssue一覧・Projects・詳細構成、repeat rows/cards/activity、Persona / Issue状態ごとのvisibility、Vue DevTools Spec Cache Inspectorのidentity別draft・cache lifecycle・stale request保護とWorkflow再取得を検証します。APIテストではGuestの読取範囲と、直接Issue・Project・コメント・Status・承認APIを呼ぶ権限迂回を検証します。レコードAPIの入力検証・ファイルへの保存・ワークスペース分離・サーバー再起動後の保持・破損ファイルの保護と、画面での保存失敗時の入力保持も検証しています。

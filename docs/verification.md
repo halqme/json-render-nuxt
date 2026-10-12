@@ -2,19 +2,17 @@
 
 ## 範囲
 
-Orbitのライト／ダーク両テーマの4画面、共通シェル、新規作成・検索ダイアログ、Inspect UIを対象に、Nuxt 4 / Nuxt UI 4 / json-render 0.21.0の実装と描画を確認しました。デザイン規約は`AGENTS.md`、依存関係と既存設定を参照しています。初期プロジェクトに独自のデザインシステム文書はありませんでした。
+Nuxt 4 / Nuxt UI 4 / json-render 0.21.0の既存UIと、開発時Vue DevTools Spec Cache bridgeの実装を確認しました。Nuxt DevToolsサイドバーからSpec Cacheを開くPlaywrightテストは2回連続で成功し、各回1件のテストでApply、Refetch、Clear、Invalidate、Server API不変を確認しました。生成した`test-results/nuxt-spec-cache.png`を目視確認しました。DevToolsのdark classに追従するパネル表示もスクリーンショットで確認していますが、テーマ追従専用の自動assertionや包括的なテーマ監査は実施していません。デザイン規約は`AGENTS.md`、依存関係と既存設定を参照しています。初期プロジェクトに独自のデザインシステム文書はありませんでした。
 
 ## 検証結果
 
-| コマンド                                                  | 結果                                                        |
-| --------------------------------------------------------- | ----------------------------------------------------------- |
-| `vp check --fix`                                          | フォーマット・lint・TypeScriptチェック成功                  |
-| `vp run typecheck`                                        | Vue SFCを含む型チェック成功、exit 0                         |
-| `vp run build`                                            | CSRクライアントとNitro APIの本番ビルド成功、exit 0          |
-| `vp exec playwright test tests/browser/inspector.spec.ts` | Inspect UIの3テスト成功、exit 0                             |
-| `vp exec playwright test tests/browser/theme.spec.ts`     | テーマの3テスト成功、exit 0                                 |
-| `vp exec playwright test`                                 | 本番ビルドをBunで自動起動し、Chromiumの16テスト成功、exit 0 |
-| `git diff --check`                                        | 空白エラーなし                                              |
+| コマンド                                                                                                                                                     | 結果                                                                                                                                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vp check --fix`                                                                                                                                             | フォーマット・lint・型チェック成功                                                                                                                                                     |
+| `vp run typecheck`                                                                                                                                           | Vue SFCを含む型チェック成功、exit 0                                                                                                                                                    |
+| `vp run test:unit`                                                                                                                                           | 5件成功（cache lifecycle / persona guard / Inspector bridge）                                                                                                                          |
+| `vp run test:devtools && vp run test:devtools && vp run build && vp exec playwright test tests/browser/inspector.spec.ts tests/browser/architecture.spec.ts` | exit 0。DevToolsは2回連続で各1件成功（約6.1秒/回）。本番ビルド成功、production / architecture browser tests 6件成功（約3.6秒）。スクリーンショット: `test-results/nuxt-spec-cache.png` |
+| `git diff --check`                                                                                                                                           | 空白エラーなし                                                                                                                                                                         |
 
 ブラウザテストの内容は次の通りです。
 
@@ -27,18 +25,16 @@ Orbitのライト／ダーク両テーマの4画面、共通シェル、新規�
 - 320px幅の一覧・詳細・プロジェクト・作成ダイアログ、横方向のページあふれがないこと。
 - 1440px幅を200%にした場合に相当する720px幅のレイアウト。
 - API失敗時のエラー表示とRetryによる復帰。
-- Inspect UIでのJSON・画面構造編集、Apply前の非反映、Apply後のリロードなしの反映、Actionの維持。
-- 不正JSON・参照・Actionの拒否、サーバーSpecへの復元、閉じる操作後のフォーカス復帰。
-- Inspect UIの4画面への追従と320px幅、画面移動後の適用済みSpec保持、再読み込み後の破棄、サーバーSpecの不変と書き込みリクエストがないこと。
-- ライト／ダークの4画面、検索・作成ダイアログ、Inspect UIと320px幅、テーマ選択の再読み込み後の保持。
-- テーマ切り替え中のフィルター・適用済みSpecの維持とサーバーSpecの不変。
-- 両テーマの代表文字、アバター、選択行・hover、作成ボタン、Inspect UIのエラー文字のコントラスト比が4.5:1以上であること。半透明のアバター背景は親背景と合成して測定。
+- 開発用Vue DevTools bridgeが全cache identity、metadata、latest/effective/override、elements、bounded request historyを公開すること。
+- Inspector draftがidentityごとに分離され、Applyの検証結果を表示し、再取得・cache hit・失敗・stale応答・override維持をcache controllerで検証すること。
+- production client bundleに開発用DevTools bridgeが含まれず、新規作成モーダルは遅延読込されること。
+- ライト／ダークの4画面、検索・作成ダイアログ、320px幅、テーマ選択の再読み込み後の保持。
+- 両テーマの代表文字、アバター、選択行・hover、作成ボタンのコントラスト比が4.5:1以上であること。半透明のアバター背景は親背景と合成して測定。
 - 全クライアントJSチャンクが500,000 bytes以下であること。
-- Inspect UI・新規作成モーダルの実装コードが初期取得したJSに含まれず、初回に開くと取得されること。再度開いてもJSリクエストが増えないこと。
 
 Playwrightはポート3100の既存サーバーを再利用せず、検査対象の`.output`をBunで起動します。
 
-スクリーンショットは`test-results/all-issues.png`、`issue-detail.png`、`projects.png`、`mobile.png`です。開発サーバーのスクリーンショットを目視確認し、本番版でも同じテストを実行しています。ライト／ダークの代表スクリーンショットも目視確認しました。テーマの画像は`test-results/theme-{light,dark}-{issues,projects,detail,modal,inspector,mobile}.png`に保存し、撮影時はアニメーションを完了状態にしています。主フローではJavaScript例外・console errorが発生しないことも検証しています。
+スクリーンショットは`test-results/all-issues.png`、`issue-detail.png`、`projects.png`、`mobile.png`です。開発サーバーのスクリーンショットを目視確認し、本番版でも同じテストを実行しています。ライト／ダークの代表スクリーンショットも目視確認しました。テーマの画像は`test-results/theme-{light,dark}-{issues,projects,detail,modal,mobile}.png`に保存し、撮影時はアニメーションを完了状態にしています。主フローではJavaScript例外・console errorが発生しないことも検証しています。
 
 ## UIレビューのカバレッジ
 

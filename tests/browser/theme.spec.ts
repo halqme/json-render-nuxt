@@ -36,10 +36,7 @@ async function expectReadableText(locator: Locator) {
   expect(ratio).toBeGreaterThanOrEqual(4.5);
 }
 
-test("theme changes preserve the issue detail Spec override without changing the server spec", async ({
-  page,
-  request,
-}) => {
+test("theme changes leave the server issue detail Spec unchanged", async ({ page, request }) => {
   await page.goto("/?view=issues");
   await expect(page.locator(".jr-issue-row").first()).toBeVisible();
   await page.getByRole("textbox", { name: "Search issues", exact: true }).fill("ENG-101");
@@ -50,15 +47,9 @@ test("theme changes preserve the issue detail Spec override without changing the
   const original = await (
     await request.get("/api/views/issue-detail?workspace=orbit&issue=ENG-101")
   ).json();
-  await page.getByRole("button", { name: "Inspect UI", exact: true }).click();
-  const inspector = page.getByRole("complementary", { name: "Inspect UI", exact: true });
-  const changed = structuredClone(original);
-  changed.elements["workflow-message"]!.props.text = "Theme preview";
-  await inspector.getByRole("textbox", { name: "UI Spec JSON" }).fill(JSON.stringify(changed));
-  await inspector.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Inspect UI", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Switch to light mode", exact: true }).click();
   await expect(page.locator("html")).not.toHaveClass(/dark/);
-  await expect(page.getByText("Theme preview", { exact: true })).toBeVisible();
   expect(
     await (await request.get("/api/views/issue-detail?workspace=orbit&issue=ENG-101")).json(),
   ).toEqual(original);
@@ -77,7 +68,7 @@ test("theme changes preserve the issue detail Spec override without changing the
 });
 
 for (const mode of ["light", "dark"] as const) {
-  test(`${mode} theme covers all views, overlays, inspector and 320px layout`, async ({ page }) => {
+  test(`${mode} theme covers all views, overlays and 320px layout`, async ({ page }) => {
     const failures: string[] = [];
     page.on("pageerror", (error) => failures.push(error.message));
     await page.goto("/?view=issues");
@@ -166,16 +157,7 @@ for (const mode of ["light", "dark"] as const) {
     });
     await page.keyboard.press("Escape");
 
-    await page.getByRole("button", { name: "Inspect UI", exact: true }).click();
-    const inspector = page.getByRole("complementary", { name: "Inspect UI", exact: true });
-    const editor = inspector.getByRole("textbox", { name: "UI Spec JSON" });
-    await expect(editor).toHaveValue(/WorkflowPanel/);
-    await expectReadableText(editor);
-    await page.screenshot({
-      path: `test-results/theme-${mode}-inspector.png`,
-      fullPage: true,
-      animations: "disabled",
-    });
+    await expect(page.getByRole("button", { name: "Inspect UI", exact: true })).toHaveCount(0);
     await page.setViewportSize({ width: 320, height: 740 });
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
@@ -186,10 +168,6 @@ for (const mode of ["light", "dark"] as const) {
         exact: true,
       }),
     ).toBeVisible();
-    await editor.fill("{");
-    await inspector.getByRole("button", { name: "Apply", exact: true }).click();
-    await expect(inspector.getByRole("alert")).toBeVisible();
-    await expectReadableText(inspector.getByRole("alert"));
     await page.screenshot({
       path: `test-results/theme-${mode}-mobile.png`,
       fullPage: true,
